@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2018 Nuvoton Technology Corporation.
+ * Nuvoton NUC980 DMA driver
  *
+ * Copyright (C) 2026 Nuvoton Technology Corp.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation;version 2 of the License.
- *
+ * Author: SCHung <schung@nuvoton.com>
  */
 
 
@@ -19,6 +18,8 @@
 #include <mach/regs-pdma.h>
 #include <mach/regs-clock.h>
 #include <linux/platform_device.h>
+#include <linux/interrupt.h>
+#include <linux/clk.h>
 
 //-----------------------------------------------------------------------------------
 #define PDMA0               ((PDMA_T *)  NUC980_VA_PDMA0)
@@ -84,6 +85,8 @@ struct nuc980_dma_platform_data nuc980_dma_data = {
 
 
 struct nuc980_dma_engine;
+static int irq_pdma0;
+static int irq_pdma1;
 
 /**
  * struct nuc980_dma_desc - NUC980 specific transaction descriptor
@@ -366,7 +369,7 @@ void nuc980_dma_SetTimeOut(struct nuc980_dma_chan *edmac,u32 prescaler,u32 count
 		return;
 	}
 
-	if(edmac->irq==IRQ_PDMA0) {
+	if(edmac->irq==irq_pdma0) {
 		pdma=PDMA0;
 	} else {
 		pdma=PDMA1;
@@ -444,7 +447,7 @@ static void hw_shutdown(struct nuc980_dma_chan *edmac)
 	ENTRY();
 	/* Just disable the channel */
 
-	if(edmac->irq==IRQ_PDMA0) {
+	if(edmac->irq==irq_pdma0) {
 		PDMA0->CHCTL &= ~(1<<edmac->id);
 	} else {
 		PDMA1->CHCTL &= ~(1<<edmac->id);
@@ -468,7 +471,7 @@ static void fill_desc(struct nuc980_dma_chan *edmac)
 
 	DMA_DEBUG("edmac->runtime_ctrl=0x%08x\n",edmac->runtime_ctrl);
 	DMA_DEBUG("desc->ctl=0x%08x\n",desc->ctl);
-	if(edmac->irq==IRQ_PDMA0) {
+	if(edmac->irq==irq_pdma0) {
 		DMA_DEBUG("PDMA0[%d] CTL=0x%08x\n",edmac->id,PDMA0->DSCT[edmac->id].CTL);
 		if((PDMA0->DSCT[edmac->id].CTL & 0x3)!=0) {
 			regT=PDMA0->CHCTL;
@@ -522,7 +525,7 @@ static void fill_desc_sc(struct nuc980_dma_chan *edmac)
 	ENTRY();
 	desc = nuc980_dma_get_active(edmac);
 
-	if(edmac->irq==IRQ_PDMA0) {
+	if(edmac->irq==irq_pdma0) {
 		DMA_DEBUG("SC PDMA0[%d] CTL=0x%08x\n",edmac->id,PDMA0->DSCT[edmac->id].CTL);
 		if((PDMA0->DSCT[edmac->id].CTL & 0x3)!=0) {
 			regT=PDMA0->CHCTL;
@@ -591,7 +594,7 @@ static void hw_submit(struct nuc980_dma_chan *edmac)
 	ENTRY();
 	desc = nuc980_dma_get_active(edmac);
 
-	if(edmac->irq==IRQ_PDMA0)
+	if(edmac->irq==irq_pdma0)
 		spin_lock(&pdma0_lock);
 	else
 		spin_lock(&pdma1_lock);
@@ -604,7 +607,7 @@ static void hw_submit(struct nuc980_dma_chan *edmac)
 	if(desc->config.en_sc==0) {
 		fill_desc(edmac);
 		nuc980_dma_SetTimeOut(edmac,desc->config.timeout_prescaler,desc->config.timeout_counter);
-		if(edmac->irq==IRQ_PDMA0) {
+		if(edmac->irq==irq_pdma0) {
 			PDMA0->DSCT[edmac->id].CTL = (PDMA0->DSCT[edmac->id].CTL & ~PDMA_DSCT_CTL_OPMODE_Msk) | PDMA_OP_BASIC;
 			if(desc->config.reqsel==0) {
 				PDMA0->SWREQ = 1<<(edmac->id);
@@ -618,7 +621,7 @@ static void hw_submit(struct nuc980_dma_chan *edmac)
 	} else {
 		fill_desc_sc(edmac);
 		nuc980_dma_SetTimeOut(edmac,desc->config.timeout_prescaler,desc->config.timeout_counter);
-		if(edmac->irq==IRQ_PDMA0) {
+		if(edmac->irq==irq_pdma0) {
 			PDMA0->DSCT[edmac->id].NEXT = virt_to_phys(&desc->dsct[0].CTL);
 			PDMA0->DSCT[edmac->id].CTL = PDMA_OP_SCATTER;
 			if(desc->config.reqsel==0) {
@@ -634,7 +637,7 @@ static void hw_submit(struct nuc980_dma_chan *edmac)
 
 		{
 			PDMA_T * pdma;
-			if(edmac->irq==IRQ_PDMA0)
+			if(edmac->irq==irq_pdma0)
 				pdma=PDMA0;
 			else
 				pdma=PDMA1;
@@ -652,7 +655,7 @@ static void hw_submit(struct nuc980_dma_chan *edmac)
 		}
 	}
 
-	if(edmac->irq==IRQ_PDMA0)
+	if(edmac->irq==irq_pdma0)
 		spin_unlock(&pdma0_lock);
 	else
 		spin_unlock(&pdma1_lock);
@@ -674,7 +677,7 @@ static int hw_interrupt(struct nuc980_dma_chan *edmac)
 	bool last_done;
 	struct nuc980_dma_desc *desc;
 	ENTRY();
-	if(edmac->irq==IRQ_PDMA0) {
+	if(edmac->irq==irq_pdma0) {
 		DMA_DEBUG("PDMA0->TDSTS=0x%08x,edmac->id=%d\n",PDMA0->TDSTS,edmac->id);
 		PDMA0->TDSTS = (1<<(edmac->id));
 	} else {
@@ -693,7 +696,7 @@ static int hw_interrupt(struct nuc980_dma_chan *edmac)
 		if (nuc980_dma_advance_active(edmac)) {
 			DMA_DEBUG2("nuc980_dma_advance_active(edmac)!=NULL\n");
 			fill_desc(edmac);
-			if(edmac->irq==IRQ_PDMA0) {
+			if(edmac->irq==irq_pdma0) {
 				PDMA0->DSCT[edmac->id].CTL = (PDMA0->DSCT[edmac->id].CTL & ~PDMA_DSCT_CTL_OPMODE_Msk) | PDMA_OP_BASIC;
 				if(desc->config.reqsel==0) {
 					PDMA0->SWREQ = 1<<(edmac->id);
@@ -840,10 +843,18 @@ static void nuc980_dma_sc_tasklet(unsigned long data)
 			else
 				done->base_addr = 2;
 		}
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].CTL=0x%08x\n",&pdma->DSCT[edmac->id].CTL,edmac->id,pdma->DSCT[edmac->id].CTL);
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].SA=0x%08x\n",&pdma->DSCT[edmac->id].SA,edmac->id,pdma->DSCT[edmac->id].SA);
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].DA=0x%08x\n",&pdma->DSCT[edmac->id].DA,edmac->id,pdma->DSCT[edmac->id].DA);
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].NEXT=0x%08x\n",&pdma->DSCT[edmac->id].NEXT,edmac->id,pdma->DSCT[edmac->id].NEXT);
+		{
+			PDMA_T *pdma;
+			if(edmac->irq==irq_pdma0)
+				pdma=PDMA0;
+			else
+				pdma=PDMA1;
+
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].CTL=0x%08x\n",&pdma->DSCT[edmac->id].CTL,edmac->id,pdma->DSCT[edmac->id].CTL);
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].SA=0x%08x\n",&pdma->DSCT[edmac->id].SA,edmac->id,pdma->DSCT[edmac->id].SA);
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].DA=0x%08x\n",&pdma->DSCT[edmac->id].DA,edmac->id,pdma->DSCT[edmac->id].DA);
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].NEXT=0x%08x\n",&pdma->DSCT[edmac->id].NEXT,edmac->id,pdma->DSCT[edmac->id].NEXT);
+		}
 	}
 
 
@@ -887,10 +898,18 @@ static void nuc980_dma_tasklet(unsigned long data)
 			else
 				done->base_addr = 2;
 		}
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].CTL=0x%08x\n",&pdma->DSCT[edmac->id].CTL,edmac->id,pdma->DSCT[edmac->id].CTL);
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].SA=0x%08x\n",&pdma->DSCT[edmac->id].SA,edmac->id,pdma->DSCT[edmac->id].SA);
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].DA=0x%08x\n",&pdma->DSCT[edmac->id].DA,edmac->id,pdma->DSCT[edmac->id].DA);
-		DMA_DEBUG("(0x%08x)pdma->DSCT[%d].NEXT=0x%08x\n",&pdma->DSCT[edmac->id].NEXT,edmac->id,pdma->DSCT[edmac->id].NEXT);
+
+		{
+			PDMA_T *pdma;
+			if(edmac->irq==irq_pdma0)
+				pdma=PDMA0;
+			else
+				pdma=PDMA1;
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].CTL=0x%08x\n",&pdma->DSCT[edmac->id].CTL,edmac->id,pdma->DSCT[edmac->id].CTL);
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].SA=0x%08x\n",&pdma->DSCT[edmac->id].SA,edmac->id,pdma->DSCT[edmac->id].SA);
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].DA=0x%08x\n",&pdma->DSCT[edmac->id].DA,edmac->id,pdma->DSCT[edmac->id].DA);
+			DMA_DEBUG("(0x%08x)pdma->DSCT[%d].NEXT=0x%08x\n",&pdma->DSCT[edmac->id].NEXT,edmac->id,pdma->DSCT[edmac->id].NEXT);
+		}
 	}
 
 	DMA_DEBUG2("*desc=0x%08x\n",*desc);
@@ -944,7 +963,7 @@ void nuc980_dma_emac_interrupt(struct nuc980_dma_chan *edmac,int status)
 		if(done!=NULL) {
 			done->done = 0;
 			done->timeout=1;
-			if(edmac->irq==IRQ_PDMA0)
+			if(edmac->irq==irq_pdma0)
 				done->remain = (PDMA0->DSCT[edmac->id].CTL & PDMA_DSCT_CTL_TXCNT_Msk)>>PDMA_DSCT_CTL_TXCNT_Pos;
 			else
 				done->remain = (PDMA1->DSCT[edmac->id].CTL & PDMA_DSCT_CTL_TXCNT_Msk)>>PDMA_DSCT_CTL_TXCNT_Pos;
@@ -1003,7 +1022,7 @@ static irqreturn_t nuc980_dma_interrupt(int irq, void *dev_id)
 	DMA_DEBUG2("PDMA0->TDSTS=0x%08x,PDMA1->TDSTS=0x%08x\n",PDMA0->TDSTS,PDMA1->TDSTS);
 
 	for(i=(edma->num_channels-1); i>=0; i--) {
-		if((edma->channels[i].irq==IRQ_PDMA0) && (irq==IRQ_PDMA0)) {
+		if((edma->channels[i].irq==irq_pdma0) && (irq==irq_pdma0)) {
 			if(pdma0_status & (1<<(edma->channels[i].id))) {
 				PDMA0->TDSTS = (1<<(edma->channels[i].id));
 				nuc980_dma_emac_interrupt(&edma->channels[i],INTERRUPT_DONE);
@@ -1019,7 +1038,7 @@ static irqreturn_t nuc980_dma_interrupt(int irq, void *dev_id)
 				//break;
 			}
 
-		} else if((edma->channels[i].irq==IRQ_PDMA1) && (irq==IRQ_PDMA1)) {
+		} else if((edma->channels[i].irq==irq_pdma1) && (irq==irq_pdma1)) {
 			if(pdma1_status & (1<<(edma->channels[i].id))) {
 				PDMA1->TDSTS = (1<<(edma->channels[i].id));
 				nuc980_dma_emac_interrupt(&edma->channels[i],INTERRUPT_DONE);
@@ -1073,7 +1092,7 @@ static dma_cookie_t nuc980_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 	//spin_unlock_irqrestore(&edmac->lock, flags);
 
 #if 0
-	if(edmac->irq==IRQ_PDMA0) {
+	if(edmac->irq==irq_pdma0) {
 		DMA_DEBUG("(0x%08x)PDMA0->DSCT[%d].CTL=0x%08x\n",&PDMA0->DSCT[edmac->id].CTL,edmac->id,PDMA0->DSCT[edmac->id].CTL);
 		DMA_DEBUG("(0x%08x)PDMA0->DSCT[%d].SA=0x%08x\n",&PDMA0->DSCT[edmac->id].SA,edmac->id,PDMA0->DSCT[edmac->id].SA);
 		DMA_DEBUG("(0x%08x)PDMA0->DSCT[%d].DA=0x%08x\n",&PDMA0->DSCT[edmac->id].DA,edmac->id,PDMA0->DSCT[edmac->id].DA);
@@ -1539,6 +1558,19 @@ static int nuc980_dma_probe(struct platform_device *pdev)
 	clk_prepare(clk);
 	clk_enable(clk);
 
+	irq_pdma0=platform_get_irq(pdev, 0);
+	ret = request_irq(irq_pdma0, nuc980_dma_interrupt, IRQF_SHARED, "PDMA0", edma);
+	if (ret) {
+		printk("request irq(irq_pdma0) fialed\n");
+		return ret;
+	}
+
+	irq_pdma1=platform_get_irq(pdev, 1);
+	ret = request_irq(irq_pdma1, nuc980_dma_interrupt, IRQF_SHARED, "PDMA1", edma);
+	if (ret) {
+		printk("request irq(IRQ_PDMA1) fialed\n");
+		return ret;
+	}
 
 	dma_dev = &edma->dma_dev;
 	edma->num_channels = pdata->num_channels;
@@ -1551,7 +1583,10 @@ static int nuc980_dma_probe(struct platform_device *pdev)
 		edmac->chan.device = dma_dev;
 		edmac->chan.private = 0;
 		edmac->regs = cdata->base;
-		edmac->irq = cdata->irq;
+		if(((uint32_t)edmac->regs&0xffffff000) == ((uint32_t)NUC980_VA_PDMA0&0xffffff000))
+			edmac->irq = irq_pdma0;
+		else
+			edmac->irq = irq_pdma1;
 		edmac->sc_flag = 0;
 		edmac->edma = edma;
 		edmac->id = (((unsigned int)(edmac->regs)&0xF0)>>4);
@@ -1567,17 +1602,6 @@ static int nuc980_dma_probe(struct platform_device *pdev)
 
 		list_add_tail(&edmac->chan.device_node,
 		              &dma_dev->channels);
-	}
-
-	ret = request_irq(IRQ_PDMA0, nuc980_dma_interrupt, IRQF_SHARED, "PDMA0", edma);
-	if (ret) {
-		printk("request irq(IRQ_PDMA0) fialed\n");
-		return ret;
-	}
-	ret = request_irq(IRQ_PDMA1, nuc980_dma_interrupt, IRQF_SHARED, "PDMA1", edma);
-	if (ret) {
-		printk("request irq(IRQ_PDMA1) fialed\n");
-		return ret;
 	}
 
 	dma_cap_zero(dma_dev->cap_mask);

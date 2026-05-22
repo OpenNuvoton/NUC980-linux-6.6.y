@@ -66,6 +66,7 @@ struct nuc980_wdt {
 	struct clk		*clk;
 	struct clk		*eclk;
 	struct platform_device	*pdev;
+	int irq;
 };
 
 static struct nuc980_wdt *nuc980_wdt;
@@ -234,6 +235,13 @@ static int nuc980wdt_probe(struct platform_device *pdev)
 		ret = PTR_ERR(clkmux);
 		return ret;
 	}
+
+	nuc980_wdt->irq = platform_get_irq(pdev, 0);
+	if (nuc980_wdt->irq < 0) {
+		dev_err(&pdev->dev, "failed to get watchdog irq\n");
+		return nuc980_wdt->irq;
+	}
+
 #ifdef CONFIG_NUC980_WDT_WKUP
 	/* Need to select xin32k to support WDT wake up */
 	clksrc = clk_get(NULL, "xin32k");
@@ -330,10 +338,10 @@ static int nuc980wdt_suspend(struct platform_device *dev, pm_message_t state)
 	local_irq_restore(flags);
 
 	__raw_writel( (1 << 0) | __raw_readl(REG_WKUPSER0), REG_WKUPSER0); //Enable System WDT wakeup
-	if (request_irq(IRQ_WDT, nuc980_wdt_interrupt, IRQF_NO_SUSPEND, "nuc980wdt", NULL)) {
+	if (request_irq(nuc980_wdt->irq, nuc980_wdt_interrupt, IRQF_NO_SUSPEND, "nuc980wdt", NULL)) {
 		return -EBUSY;
 	}
-	enable_irq_wake(IRQ_WDT);
+	enable_irq_wake(nuc980_wdt->irq);
 
 	return 0;
 }
@@ -349,8 +357,8 @@ static int nuc980wdt_resume(struct platform_device *dev)
 	local_irq_restore(flags);
 
 	__raw_writel(RESET_COUNTER, REG_WDT_RSTCNT);
-	disable_irq_wake(IRQ_WDT);
-	free_irq(IRQ_WDT, NULL);
+	disable_irq_wake(nuc980_wdt->irq);
+	free_irq(nuc980_wdt->irq, NULL);
 
 	return 0;
 }

@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- *  linux/drivers/mmc/host/nuc980_sd.c - Nuvoton NUC980 SD Driver
+ * Nuvoton NUC980 SDH driver
  *
- * Copyright (c) 2018 Nuvoton Technology Corp.
+ * Copyright (C) 2026 Nuvoton Technology Corp.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation;version 2 of the License.
+ * Author: SCHung <schung@nuvoton.com>
  */
 
 
@@ -200,7 +199,7 @@ static inline void nuc980_sd_sg_to_dma(struct nuc980_sd_host *host, struct mmc_d
 
 		sg = &data->sg[i];
 
-		sgbuffer = kmap_atomic(sg_page(sg)) + sg->offset;
+		sgbuffer = kmap_local_page(sg_page(sg)) + sg->offset;
 		amount = min(size, sg->length);
 		size -= amount;
 		{
@@ -210,7 +209,7 @@ static inline void nuc980_sd_sg_to_dma(struct nuc980_sd_host *host, struct mmc_d
 			dmabuf = (unsigned *)tmpv;
 		}
 
-		kunmap_atomic(sgbuffer);
+		kunmap_local(sgbuffer);
 		data->bytes_xfered += amount;
 
 		if (size == 0)
@@ -234,7 +233,7 @@ static void nuc980_sd_post_dma_read(struct nuc980_sd_host *host)
 	struct mmc_data *data;
 	unsigned int len, i, size;
 	unsigned *dmabuf = host->buffer;
-	ENTRY();
+
 	cmd = host->cmd;
 	if (!cmd) {
 		nuc980_sd_debug("no command\n");
@@ -257,7 +256,7 @@ static void nuc980_sd_post_dma_read(struct nuc980_sd_host *host)
 
 		sg = &data->sg[i];
 
-		sgbuffer = kmap_atomic(sg_page(sg)) + sg->offset;
+		sgbuffer = kmap_local_page(sg_page(sg)) + sg->offset;
 		amount = min(size, sg->length);
 		size -= amount;
 		{
@@ -266,8 +265,8 @@ static void nuc980_sd_post_dma_read(struct nuc980_sd_host *host)
 			tmpv += amount;
 			dmabuf = (unsigned *)tmpv;
 		}
-		flush_kernel_dcache_page(sg_page(sg));
-		kunmap_atomic(sgbuffer);
+		flush_dcache_page(sg_page(sg));
+		kunmap_local(sgbuffer);
 		data->bytes_xfered += amount;
 		if (size == 0)
 			break;
@@ -797,8 +796,9 @@ static irqreturn_t nuc980_sd_irq(int irq, void *devid)
 	struct nuc980_sd_host *host = devid;
 	unsigned int int_status, present;
 	ENTRY();
+
 	int_status = nuc980_sd_read(REG_SDISR);
-	//nuc980_sd_debug("FMI irq: status = %08X <0x%x, csr 0x%x>\n", int_status, nuc980_sd_read(REG_MFP_GPD_L), nuc980_sd_read(REG_SDCSR));
+	nuc980_sd_debug("FMI irq: status = %08X <0x%x, csr 0x%x>\n", int_status, nuc980_sd_read(REG_MFP_GPD_L), nuc980_sd_read(REG_SDCSR));
 	if (int_status & 0x400) { /* sdio 0 interrupt */
 		nuc980_sd_write(REG_SDIER, nuc980_sd_read(REG_SDIER) & ~0x400);
 		nuc980_sd_write(REG_SDISR, 0x400);
@@ -902,6 +902,7 @@ static int nuc980_sd_probe(struct platform_device *pdev)
 	struct pinctrl *p;
 #endif
 	struct clk *sd_clk=NULL,*upll_clk=NULL,*xin_clk=NULL,*div_clk=NULL;
+
 	ENTRY();
 	printk("%s - pdev = %s\n", __func__, pdev->name);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1010,14 +1011,14 @@ static int nuc980_sd_probe(struct platform_device *pdev)
 	 */
 	host->irq = platform_get_irq(pdev, 0);
 	ret = request_irq(host->irq, nuc980_sd_irq, IRQF_SHARED, mmc_hostname(mmc), host);
+	
+	dev_info(&pdev->dev, "platform_get_irq(0) = %d\n", host->irq);
 	if (ret) {
 		dev_dbg(&pdev->dev, "request MCI interrupt failed\n");
 		goto fail0;
 	}
 
 	/* add a thread to check CO, RI, and R2 */
-	//kernel_thread(sd_event_thread, NULL, 0);
-	//setup_timer(&host->timer, nuc980_sd_timeout_timer, (unsigned long)host);
 	timer_setup(&host->timer, nuc980_sd_timeout_timer, 0);
 	platform_set_drvdata(pdev, mmc);
 	/*
@@ -1134,6 +1135,6 @@ static struct platform_driver nuc980_sd_driver = {
 module_platform_driver(nuc980_sd_driver);
 
 MODULE_DESCRIPTION("NUC980 dual SD Card Interface driver");
-MODULE_AUTHOR("HPChen");
+MODULE_AUTHOR("SCHung");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:nuc980_sd");

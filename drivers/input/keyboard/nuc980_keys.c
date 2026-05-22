@@ -1,6 +1,6 @@
 /* linux/driver/input/nuc980_keys.c
  *
- * Copyright (c) 2017 Nuvoton technology corporation
+ * Copyright (c) 2026 Nuvoton technology corporation
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -29,7 +29,7 @@
 #include <linux/completion.h>
 
 #include <linux/platform_device.h>
-
+#include <linux/gpio/consumer.h>
 #include <mach/map.h>
 #include <mach/mfp.h>
 
@@ -70,6 +70,8 @@ static u32 row_cnt = 1, col_cnt = 1;
 static u32 is_keypad_mode = 0;
 // Here saves pin info of matrix. gpio_col is reserved in normal button mode
 static u32 gpio_row[ROW_COL_MAX], gpio_col[ROW_COL_MAX], key_code[ROW_COL_MAX*ROW_COL_MAX];
+static int row_irq[ROW_COL_MAX];
+static struct gpio_desc *row_desc[ROW_COL_MAX];
 spinlock_t scanlock;
 
 static void scan_key(struct timer_list *t)
@@ -153,18 +155,9 @@ static void scan_key(struct timer_list *t)
 	spin_unlock_irqrestore(&scanlock, flags);
 }
 
-static irqreturn_t nuc980_kpd_irq(int irq, void *dev_id) 
+static irqreturn_t nuc980_kpd_irq(int irq, void *dev_id)
 {
-	u32 group, num;
-
-	// get #GPIO
-	group = (irq - IRQ_GPIO_START) / GPIO_OFFSET;
-	num = (irq - IRQ_GPIO_START) % GPIO_OFFSET;
-
 	scan_key(0);
-
-	// clear ISR
-	writel(readl(REG_GPIOA_INTSRC + group*0x40) & (0x1 << num), REG_GPIOA_INTSRC + group*0x40);
 
 	return IRQ_HANDLED;
 }
@@ -179,10 +172,9 @@ static irqreturn_t kpi_interrupt_handle__(int irq, void *dev_id)
 
 	// clear ISR
 	writel(readl(REG_GPIOA_INTSRC + group*0x40) & (0x1 << num), REG_GPIOA_INTSRC + group*0x40);
-    
+
 	return IRQ_HANDLED;
 }
-
 
 int nuc980_kpd_open(struct input_dev *input)
 {
@@ -200,13 +192,25 @@ int nuc980_kpd_open(struct input_dev *input)
 
 	spin_lock_init(&scanlock);
 
-	// Resgister irq for each row
 	for (i = 0; i < row_cnt; i++) {
-		// clear isr status
-		writel(0x1 << (gpio_row[i] % GPIO_OFFSET), REG_GPIOA_INTSRC + (gpio_row[i] / GPIO_OFFSET)*0x40);
-		error =  request_irq(IRQ_GPIO_START + gpio_row[i], nuc980_kpd_irq, IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND, "Keys", NULL);
+
+		row_desc[i] = gpio_to_desc(gpio_row[i]);
+		if (!row_desc[i]) {
+			dev_err(input->dev.parent, "Invalid GPIO %d\n", gpio_row[i]);
+			return -EINVAL;
+		}
+
+		row_irq[i] = gpiod_to_irq(row_desc[i]);
+		if (row_irq[i] < 0) {
+			dev_err(input->dev.parent, "Failed to map GPIO %d to IRQ\n", gpio_row[i]);
+			return row_irq[i];
+		}
+
+		error = request_irq(row_irq[i], nuc980_kpd_irq, IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND, "Keys", input);
+
 		if (error) {
-			dev_err(input->dev.parent, "Failed to register GPIO#%d IRQ.\n", gpio_row[i]);
+			dev_err(input->dev.parent,
+					"Failed to register GPIO IRQ %d\n", gpio_row[i]);
 			return -EAGAIN;
 		}
 	}
@@ -232,22 +236,15 @@ exit:
 	return 0;
 }
 
-
-
 void nuc980_kpd_close(struct input_dev *dev)
 {
-	u32 i;
+    int i;
 
-	open_cnt--;
-	if (open_cnt == 0) {
-		//disable interrupt
-		for (i = 0; i < row_cnt; i++) {
-			free_irq(gpio_to_irq(gpio_row[i]), NULL);
-		}
-	}
-	return;
+    for (i = 0; i < row_cnt; i++) {
+        if (row_irq[i] >= 0)
+            free_irq(row_irq[i], dev);
+    }
 }
-
 
 static int nuc980_keys_probe(struct platform_device *pdev)
 {
@@ -255,14 +252,11 @@ static int nuc980_keys_probe(struct platform_device *pdev)
 	u32	gpio_matrix[2] = {0};
 	struct clk *clk;
 
-	clk = clk_get(NULL, "gpio_hclk");
-	if (IS_ERR(clk)) {
-		dev_err(&pdev->dev, "Failed to get gpio clock source.\n");
-		err = PTR_ERR(clk);
-		return err;
-	}
-	clk_prepare(clk);
-	clk_enable(clk);
+	clk = devm_clk_get_enabled(&pdev->dev, "gpio_hclk");
+    if (IS_ERR(clk)) {
+        err = PTR_ERR(clk);
+        return dev_err_probe(&pdev->dev, err, "Failed to enabled gpio clock\n");
+    }
 
 	// Get properties from dts
 	if (pdev->dev.of_node) {
@@ -290,12 +284,12 @@ static int nuc980_keys_probe(struct platform_device *pdev)
 
 		} else {
 			dev_err(&pdev->dev, "Failed to parse key-matrix.\n");
-			goto fail;
+			return -EINVAL;
 		}
 	}
 
 	if((row_cnt > ROW_COL_MAX) || (col_cnt > ROW_COL_MAX))
-		goto fail;
+		return -EINVAL;
 
 	// Parse & init GPIO
 	for (i = 0; i < row_cnt; i++) {
@@ -326,10 +320,9 @@ static int nuc980_keys_probe(struct platform_device *pdev)
 
 	writel(0x2f, REG_GPIO_DBNCECON); // De-bounce sampling cycle select 32768 clock
 
-	if (!(nuc980_keys_input_dev = input_allocate_device())) {
+	if (!(nuc980_keys_input_dev = devm_input_allocate_device(&pdev->dev))) {
 		dev_err(&pdev->dev, "Failed to allocate memory.\n");
-		err = -ENOMEM;
-		goto fail;
+		return -ENOMEM;
 	}
 
 	nuc980_keys_input_dev->name = "nuc980-keys";
@@ -349,7 +342,6 @@ static int nuc980_keys_probe(struct platform_device *pdev)
 
 	err = input_register_device(nuc980_keys_input_dev);
 	if (err) {
-		input_free_device(nuc980_keys_input_dev);
 		return err;
 	}
 
@@ -358,35 +350,16 @@ static int nuc980_keys_probe(struct platform_device *pdev)
 	nuc980_keys_input_dev->rep[REP_PERIOD] = 33;
 
 	return 0;
-
-fail:
-	input_free_device(nuc980_keys_input_dev);
-	return err;
 }
 
 static int nuc980_keys_remove(struct platform_device *pdev)
 {
-	u32 i;
-	int err;
-	struct clk *clk;
+	if (nuc980_keys_input_dev) {
+        input_unregister_device(nuc980_keys_input_dev);
+        nuc980_keys_input_dev = NULL;
+    }
 
-	for (i = 0; i < row_cnt; i++) {
-		disable_irq(gpio_to_irq(gpio_row[i]));
-	}
-
-	clk = clk_get(NULL, "gpio");
-	if (IS_ERR(clk)) {
-		dev_err(&pdev->dev, "Failed to get gpio clock source.\n");
-		err = PTR_ERR(clk);
-		return err;
-	}
-
-	clk_disable(clk);
-
-	platform_set_drvdata(pdev, NULL);
-	input_free_device(nuc980_keys_input_dev);
-
-	return 0;
+    return 0;
 }
 
 #define nuc980_keys_suspend   NULL

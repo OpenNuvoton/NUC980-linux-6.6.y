@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Nuvoton Technology Corporation.
+ * Copyright (c) 2026 Nuvoton Technology Corporation.
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -296,26 +296,15 @@ static int nuc980_init_systime(struct nuc980_ether *priv, u32 sec, u32 nsec)
 	return 0;
 }
 
-static int nuc980_adjust_freq(struct ptp_clock_info *ptp, s32 ppb)
+static int nuc980_adjust_freq(struct ptp_clock_info *ptp, long scaled_ppm)
 {
 	struct nuc980_ether *priv =
 	    container_of(ptp, struct nuc980_ether, ptp_clock_ops);
 	unsigned long flags;
-	u32 diff, addend;
-	int neg_adj = 0;
-	u64 adj;
+	u32 addend;
 
-	if (ppb < 0) {
-		neg_adj = 1;
-		ppb = -ppb;
-	}
+	addend = adjust_by_scaled_ppm(priv->default_addend, scaled_ppm);
 
-	addend = priv->default_addend;
-	adj = addend;
-	adj *= ppb;
-	diff = div_u64(adj, 1000000000ULL);
-	addend = neg_adj ? (addend - diff) : (addend + diff);
-	
 	spin_lock_irqsave(&priv->ptp_lock, flags);
 	nuc980_config_addend(addend);
 	spin_unlock_irqrestore(&priv->lock, flags);
@@ -406,7 +395,7 @@ static struct ptp_clock_info nuc980_ptp_clock_ops = {
 	.n_ext_ts = 0,
 	.n_per_out = 0,
 	.pps = 0,
-	.adjfreq = nuc980_adjust_freq,
+	.adjfine = nuc980_adjust_freq,
 	.adjtime = nuc980_adjust_time,
 	.gettime64 = nuc980_get_time,
 	.settime64 = nuc980_set_time,
@@ -694,7 +683,7 @@ static void adjust_link(struct net_device *netdev)
 
 
 static void nuc980_write_cam(struct net_device *netdev,
-				unsigned int x, unsigned char *pval)
+				unsigned int x, const unsigned char *pval)
 {
 	unsigned int msw, lsw;
 
@@ -1027,12 +1016,12 @@ static int nuc980_mdio_reset(struct mii_bus *bus)
 
 static int nuc980_set_mac_address(struct net_device *netdev, void *addr)
 {
-	struct sockaddr *address = addr;
+	int ret;
 
-	if (!is_valid_ether_addr(address->sa_data))
-		return -EADDRNOTAVAIL;
+	ret = eth_mac_addr(netdev, addr);
+	if (ret)
+		return ret;
 
-	memcpy(netdev->dev_addr, address->sa_data, netdev->addr_len);
 	nuc980_write_cam(netdev, CAM0, netdev->dev_addr);
 
 	return 0;
@@ -1519,7 +1508,7 @@ static const struct net_device_ops nuc980_ether_netdev_ops = {
 	.ndo_get_stats		= nuc980_ether_stats,
 	.ndo_set_rx_mode	= nuc980_ether_set_multicast_list,
 	.ndo_set_mac_address	= nuc980_set_mac_address,
-	.ndo_do_ioctl		= nuc980_ether_ioctl,
+	.ndo_eth_ioctl		= nuc980_ether_ioctl,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_change_mtu		= nuc980_change_mtu,
 };
@@ -1532,7 +1521,7 @@ static void __init get_mac_address(struct net_device *netdev)
 	pdev = ether->pdev;
 
 	if (is_valid_ether_addr(nuc980_mac1))
-		memcpy(netdev->dev_addr, &nuc980_mac1[0], 0x06);
+		eth_hw_addr_set(netdev, nuc980_mac1);
 	else
 		dev_err(&pdev->dev, "invalid mac address\n");
 }
@@ -1721,7 +1710,7 @@ static int nuc980_ether_probe(struct platform_device *pdev)
 	ether->duplex = DUPLEX_FULL;
 	spin_lock_init(&ether->lock);
 
-	netif_napi_add(netdev, &ether->napi, nuc980_poll, 32);
+	netif_napi_add(netdev, &ether->napi, nuc980_poll);
 
 	if (pdev->dev.of_node &&
 	    of_get_property(pdev->dev.of_node, "use-ncsi", NULL)) {

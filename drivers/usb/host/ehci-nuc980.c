@@ -1,15 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * linux/driver/usb/host/ehci-nuc980.c
+ *  NUC980 ehci driver
  *
  * Copyright (c) 2018 Nuvoton technology corporation.
- *
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation;version 2 of the License.
  *
  */
-
 
 #include <linux/platform_device.h>
 #include <linux/signal.h>
@@ -26,48 +25,54 @@
 #include <mach/regs-timer.h>
 #include <mach/regs-gpio.h>
 
-
 //#define PORT_DEBUG
 //#define FORCE_PORT0_HOST
 
-
 #ifdef CONFIG_USE_OF
-static int  of_pm_vbus_off;	/* 1: turn-off VBUS when suspend; 0: keep VBUS power */
-static int  of_mfp_setting;	/* 1: use VBUS_EN (PE.10) MFP; 0: PE.10 for GPIO     */
+static int of_pm_vbus_off; /* 1: turn-off VBUS when suspend; 0: keep VBUS power */
+static int of_mfp_setting; /* 1: use VBUS_EN (PE.10) MFP; 0: PE.10 for GPIO     */
 #endif
-
 
 #ifdef PORT_DEBUG
 #include <linux/kthread.h>
 static int port_dump_thread(void *__unused)
 {
 	while (1) {
-		printk("EHCI: 0x%x 0x%x\n", __raw_readl(NUC980_VA_EHCI+0x64), __raw_readl(NUC980_VA_EHCI+0x68));
-		printk("OHCI: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n", __raw_readl(NUC980_VA_OHCI+0x54), __raw_readl(NUC980_VA_OHCI+0x58), __raw_readl(NUC980_VA_OHCI+0x5C), __raw_readl(NUC980_VA_OHCI+0x60), __raw_readl(NUC980_VA_OHCI+0x64), __raw_readl(NUC980_VA_OHCI+0x68), __raw_readl(NUC980_VA_OHCI+0x6C), __raw_readl(NUC980_VA_OHCI+0x70));
+		pr_debug("EHCI: 0x%x 0x%x\n", __raw_readl(NUC980_VA_EHCI + 0x64),
+			 __raw_readl(NUC980_VA_EHCI + 0x68));
+		pr_debug("OHCI: 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x\n",
+			 __raw_readl(NUC980_VA_OHCI + 0x54),
+				__raw_readl(NUC980_VA_OHCI + 0x58),
+				__raw_readl(NUC980_VA_OHCI + 0x5C),
+				__raw_readl(NUC980_VA_OHCI + 0x60),
+				__raw_readl(NUC980_VA_OHCI + 0x64),
+				__raw_readl(NUC980_VA_OHCI + 0x68),
+				__raw_readl(NUC980_VA_OHCI + 0x6C),
+				__raw_readl(NUC980_VA_OHCI + 0x70));
 		msleep(20000);
 	}
 	return 0;
 }
 #endif
 
-
 static int usb_nuc980_probe(const struct hc_driver *driver,
-                            struct platform_device *pdev)
+			    struct platform_device *pdev)
 {
 	struct usb_hcd *hcd;
 	struct ehci_hcd *ehci;
-	u32  physical_map_ehci;
+	u32 physical_map_ehci;
 	struct pinctrl *p;
 	int retval;
+	int irq;
 #ifdef FORCE_PORT0_HOST
 	unsigned long flags;
 #endif
-	u32   val32[2];
+	u32 val32[2];
 
 	(void)p;
 
 	if (IS_ERR(clk_get(NULL, "usbh_hclk"))) {
-		printk("clk_get error!!\n");
+		dev_err(&pdev->dev, "clk_get error!!\n");
 		return -1;
 	}
 
@@ -84,41 +89,47 @@ static int usb_nuc980_probe(const struct hc_driver *driver,
 		__raw_writel(0x59UL, REG_WRPRTR);
 		__raw_writel(0x16UL, REG_WRPRTR);
 		__raw_writel(0x88UL, REG_WRPRTR);
-	} while(__raw_readl(REG_WRPRTR) == 0UL);
+	} while (__raw_readl(REG_WRPRTR) == 0UL);
 
 	/* set USRHDSEN as 1; USB host/device role selection decided by USBID (SYS_PWRON[16]) */
-	__raw_writel(__raw_readl(REG_MISCFCR) | (1<<11), (volatile void __iomem *)REG_MISCFCR);
+	__raw_writel(__raw_readl(REG_MISCFCR) | (1 << 11),
+		     (volatile void __iomem *)REG_MISCFCR);
 
 	/* set USB port 0 used for Host */
-	__raw_writel(__raw_readl(REG_PWRON) | (1<<16), (volatile void __iomem *)REG_PWRON);
+	__raw_writel(__raw_readl(REG_PWRON) | (1 << 16),
+		     (volatile void __iomem *)REG_PWRON);
 	__raw_writel(0, REG_WRPRTR);
 	local_irq_restore(flags);
 #endif
 
 	p = devm_pinctrl_get_select_default(&pdev->dev);
-	if (IS_ERR(p)) {
-		printk("%s - Do not use VBUS_EN and OVC pins.\n", __func__);
-	}
+	if (IS_ERR(p))
+		dev_err(&pdev->dev, "%s - Do not use VBUS_EN and OVC pins.\n", __func__);
 
 	if ((__raw_readl(REG_MFP_GPE_H) & 0x000F0000) == 0x00010000)
 		of_mfp_setting = 1;
 	else
 		of_mfp_setting = 0;
 
-	if (of_property_read_u32_array(pdev->dev.of_node, "ov_active", val32, 1) != 0) {
-		printk("%s - can not get ov_active setting!\n", __func__);
+	if (of_property_read_u32_array(pdev->dev.of_node, "ov_active", val32,
+				       1) != 0) {
+		dev_err(&pdev->dev, "%s - can not get ov_active setting!\n", __func__);
 		return -EINVAL;
 	}
-	printk("EHCI over-current active level %s...\n", val32[0] ? "high" : "low");
+	dev_err(&pdev->dev, "EHCI over-current active level %s...\n",
+		val32[0] ? "high" : "low");
 	if (val32[0]) {
 		/* set over-current active high */
-		__raw_writel(__raw_readl(NUC980_VA_OHCI+0x204) &~0x8, (volatile void __iomem *)(NUC980_VA_OHCI+0x204));
+		__raw_writel(__raw_readl(NUC980_VA_OHCI + 0x204) & ~0x8,
+			     (volatile void __iomem *)(NUC980_VA_OHCI + 0x204));
 	} else {
 		/* set over-current active low */
-		__raw_writel(__raw_readl(NUC980_VA_OHCI+0x204) | 0x8, (volatile void __iomem *)(NUC980_VA_OHCI+0x204));
+		__raw_writel(__raw_readl(NUC980_VA_OHCI + 0x204) | 0x8,
+			     (volatile void __iomem *)(NUC980_VA_OHCI + 0x204));
 	}
 
-	if (of_property_read_u32_array(pdev->dev.of_node, "pm_vbus_off", val32, 1) == 0) {
+	if (of_property_read_u32_array(pdev->dev.of_node, "pm_vbus_off", val32,
+				       1) == 0) {
 		if (val32[0])
 			of_pm_vbus_off = 1;
 		else
@@ -137,9 +148,10 @@ static int usb_nuc980_probe(const struct hc_driver *driver,
 	if (!pdev->dev.coherent_dma_mask)
 		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 
-	if (pdev->resource[1].flags != IORESOURCE_IRQ) {
-		pr_debug("resource[1] is not IORESOURCE_IRQ");
-		retval = -ENOMEM;
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		retval = irq;
+		goto err1;
 	}
 
 	/*
@@ -167,7 +179,7 @@ static int usb_nuc980_probe(const struct hc_driver *driver,
 	}
 
 	hcd->regs = ioremap(hcd->rsrc_start, hcd->rsrc_len);
-	if (hcd->regs == NULL) {
+	if (!hcd->regs) {
 		pr_debug("ehci error mapping memory\n");
 		retval = -EFAULT;
 		goto err3;
@@ -179,16 +191,17 @@ static int usb_nuc980_probe(const struct hc_driver *driver,
 
 	/* enable PHY 0/1 */
 	physical_map_ehci = (u32)ehci->caps;
-	__raw_writel(0x160, (volatile void __iomem *)physical_map_ehci+0xC4);
-	__raw_writel(0x520, (volatile void __iomem *)physical_map_ehci+0xC8);
+	__raw_writel(0x160, (volatile void __iomem *)physical_map_ehci + 0xC4);
+	__raw_writel(0x520, (volatile void __iomem *)physical_map_ehci + 0xC8);
 
-	//__raw_writel(__raw_readl(NUC980_VA_OHCI+0x204) | 0xfc0000, (volatile void __iomem *)(NUC980_VA_OHCI+0x204));
+	// __raw_writel(__raw_readl(NUC980_VA_OHCI+0x204) | 0xfc0000,
+	//				(volatile void __iomem *)(NUC980_VA_OHCI+0x204));
 
 	/* cache this readonly data; minimize chip reads */
 	ehci->hcs_params = readl(&ehci->caps->hcs_params);
 	ehci->sbrn = 0x20;
 
-	retval = usb_add_hcd(hcd, pdev->resource[1].start, IRQF_SHARED);
+	retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 
 	if (retval != 0)
 		goto err4;
@@ -196,7 +209,7 @@ static int usb_nuc980_probe(const struct hc_driver *driver,
 #ifdef PORT_DEBUG
 	kthread_run(port_dump_thread, NULL, "khubd");
 #endif
-	printk("NUC980 EHCI init done.\n");
+	dev_err(&pdev->dev, "NUC980 EHCI init done.\n");
 	return retval;
 
 err4:
@@ -217,7 +230,6 @@ void usb_nuc980_remove(struct usb_hcd *hcd, struct platform_device *pdev)
 	usb_put_hcd(hcd);
 }
 
-
 static const struct hc_driver ehci_nuc980_hc_driver = {
 	.description = hcd_name,
 	.product_desc = "Nuvoton NUC980 EHCI Host Controller",
@@ -226,47 +238,47 @@ static const struct hc_driver ehci_nuc980_hc_driver = {
 	/*
 	 * generic hardware linkage
 	 */
-	.irq =			ehci_irq,
-	.flags =		HCD_MEMORY | HCD_DMA | HCD_USB2 | HCD_BH,
+	.irq = ehci_irq,
+	.flags = HCD_MEMORY | HCD_DMA | HCD_USB2 | HCD_BH,
 	/*
 	 * basic lifecycle operations
 	 */
-	.reset =		ehci_setup,
-	.start =		ehci_run,
-	.stop =			ehci_stop,
-	.shutdown =		ehci_shutdown,
+	.reset = ehci_setup,
+	.start = ehci_run,
+	.stop = ehci_stop,
+	.shutdown = ehci_shutdown,
 
 	/*
 	 * managing i/o requests and associated device resources
 	 */
-	.urb_enqueue =		ehci_urb_enqueue,
-	.urb_dequeue =		ehci_urb_dequeue,
-	.endpoint_disable =	ehci_endpoint_disable,
-	.endpoint_reset =	ehci_endpoint_reset,
-	.clear_tt_buffer_complete =	ehci_clear_tt_buffer_complete,
+	.urb_enqueue = ehci_urb_enqueue,
+	.urb_dequeue = ehci_urb_dequeue,
+	.endpoint_disable = ehci_endpoint_disable,
+	.endpoint_reset = ehci_endpoint_reset,
+	.clear_tt_buffer_complete = ehci_clear_tt_buffer_complete,
 
 	/*
 	 * scheduling support
 	 */
-	.get_frame_number =	ehci_get_frame,
+	.get_frame_number = ehci_get_frame,
 
 	/*
 	 * root hub support
 	 */
-	.hub_status_data =	ehci_hub_status_data,
-	.hub_control =		ehci_hub_control,
-	.bus_suspend =		ehci_bus_suspend,
-	.bus_resume =		ehci_bus_resume,
-	.relinquish_port =	ehci_relinquish_port,
-	.port_handed_over =	ehci_port_handed_over,
-	.get_resuming_ports =	ehci_get_resuming_ports,
+	.hub_status_data = ehci_hub_status_data,
+	.hub_control = ehci_hub_control,
+	.bus_suspend = ehci_bus_suspend,
+	.bus_resume = ehci_bus_resume,
+	.relinquish_port = ehci_relinquish_port,
+	.port_handed_over = ehci_port_handed_over,
+	.get_resuming_ports = ehci_get_resuming_ports,
 
 	/*
 	 * device support
 	 */
-	.free_dev =		ehci_remove_device,
+	.free_dev = ehci_remove_device,
 
-#ifdef  CONFIG_PM
+#ifdef CONFIG_PM
 	.bus_suspend = ehci_bus_suspend,
 	.bus_resume = ehci_bus_resume,
 #endif
@@ -294,22 +306,26 @@ static int ehci_nuc980_pm_suspend(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 	bool do_wakeup = device_may_wakeup(dev);
-	int  ret;
+	int ret;
 
 	ret = ehci_suspend(hcd, do_wakeup);
 
 #if !defined(CONFIG_USB_NUC980_OHCI)
 	/* Suspend PHY0 and PHY1; this will turn off PHY power. */
 	/* If NUC980 OHCI enabled, this job will be left to NUC980 OHCI driver. */
-	__raw_writel(0x60, NUC980_VA_EHCI+0xC4);
-	__raw_writel(0x20, NUC980_VA_EHCI+0xC8);
+	__raw_writel(0x60, NUC980_VA_EHCI + 0xC4);
+	__raw_writel(0x20, NUC980_VA_EHCI + 0xC8);
 #endif
 
 	if (of_pm_vbus_off) {
 		if (of_mfp_setting == 1) {
-			__raw_writel(__raw_readl(REG_GPIOE_DOUT) & ~(1<<12), REG_GPIOE_DOUT);     // PE.12 output low
-			__raw_writel(((__raw_readl(REG_GPIOE_MODE) & 0xFCFFFFFF) | (1<<24)), REG_GPIOE_MODE);   // PE.12 output mode
-			__raw_writel(__raw_readl(REG_MFP_GPE_H) & 0xFFF0FFFF, REG_MFP_GPE_H);     // PE.12 GPIO mode
+			__raw_writel(__raw_readl(REG_GPIOE_DOUT) & ~(1 << 12),
+				     REG_GPIOE_DOUT); // PE.12 output low
+			__raw_writel(((__raw_readl(REG_GPIOE_MODE) & 0xFCFFFFFF) |
+				 (1 << 24)),
+				REG_GPIOE_MODE); // PE.12 output mode
+			__raw_writel(__raw_readl(REG_MFP_GPE_H) & 0xFFF0FFFF,
+				     REG_MFP_GPE_H); // PE.12 GPIO mode
 		}
 	}
 	return ret;
@@ -321,28 +337,28 @@ static int ehci_nuc980_pm_resume(struct device *dev)
 
 	if (of_pm_vbus_off) {
 		if (of_mfp_setting == 1) {
-			__raw_writel(__raw_readl(REG_MFP_GPE_H) | 0x00010000, REG_MFP_GPE_H);       // PE.12 for USBH_PWREN
+			__raw_writel(__raw_readl(REG_MFP_GPE_H) | 0x00010000,
+				     REG_MFP_GPE_H); // PE.12 for USBH_PWREN
 		}
 	}
 
 	/* re-enable PHY0 and PHY1 */
-	__raw_writel(0x160, NUC980_VA_EHCI+0xC4);
-	__raw_writel(0x520, NUC980_VA_EHCI+0xC8);
+	__raw_writel(0x160, NUC980_VA_EHCI + 0xC4);
+	__raw_writel(0x520, NUC980_VA_EHCI + 0xC8);
 
 	ehci_resume(hcd, false);
 
 	return 0;
 }
 #else
-#define ehci_nuc980_pm_suspend  NULL
-#define ehci_nuc980_pm_resume   NULL
+#define ehci_nuc980_pm_suspend NULL
+#define ehci_nuc980_pm_resume NULL
 #endif
 
 static const struct dev_pm_ops ehci_nuc980_dev_pm_ops = {
-	.suspend         = ehci_nuc980_pm_suspend,
-	.resume          = ehci_nuc980_pm_resume,
+	.suspend = ehci_nuc980_pm_suspend,
+	.resume = ehci_nuc980_pm_resume,
 };
-
 
 static const struct of_device_id nuc980_ehci_of_match[] = {
 	{ .compatible = "nuvoton,nuc980-ehci" },
@@ -350,15 +366,12 @@ static const struct of_device_id nuc980_ehci_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, nuc980_ehci_of_match);
 
-
 static struct platform_driver ehci_hcd_nuc980_driver = {
 	.probe = ehci_nuc980_probe,
 	.remove = ehci_nuc980_remove,
 	.driver = {
 		.name = "nuc980-ehci",
 		.pm = &ehci_nuc980_dev_pm_ops,
-		.owner= THIS_MODULE,
 		.of_match_table = of_match_ptr(nuc980_ehci_of_match),
 	},
 };
-

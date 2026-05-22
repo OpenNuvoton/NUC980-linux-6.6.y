@@ -9,43 +9,6 @@ config NUC980_CAN0
 	help
 	  This selects NUC980 CAN0 driver
 
-menuconfig NUC980_CAN
-	tristate "NUC980 CAN0~CAN3 devices"
-	depends on HAS_IOMEM
-
-if NUC980_CAN
-
-config NUC980_CAN0
-	bool "NUC980 CAN0 support"
-	help
-	  This selects NUC980 CAN0 driver
-
-menuconfig NUC980_CAN
-	tristate "NUC980 CAN0~CAN3 devices"
-	depends on HAS_IOMEM
-
-if NUC980_CAN
-
-	config NUC980_CAN0_PG
-		bool "Rx:PG11, Tx:PG12"
-	config NUC980_CAN0_PE
-		bool "Rx:PE0, Tx:PE1"
-endchoice
-
-config NUC980_CAN1
-	bool "NUC980 CAN1 support"
-	help
-	  This selects NUC980 CAN1 driver
-
-	config NUC980_CAN0_PD
-		bool "Rx:PD6, Tx:PD7"
-	config NUC980_CAN0_PC
-		bool "Rx:PC3, Tx:PC4"
-config NUC980_CAN0
-	bool "NUC980 CAN0 support"
-	help
-	  This selects NUC980 CAN0 driver
-
 config ENABLE_CAN0_RX_WAKEUP
 	bool "Enable CAN0 wake-up function"
 	depends on NUC980_CAN0
@@ -59,79 +22,8 @@ choice
 	help
 	  Select CAN0 multi-function pin.
 
-config NUC980_CAN2
-	bool "NUC980 CAN2 support"
-	help
-	  This selects NUC980 CAN2 driver
-
-	config NUC980_CAN1_PE
-		bool "Rx:PE2, Tx:PE3"
-endchoice
-
-	config NUC980_CAN1_PG
-		bool "Rx:PG13, Tx:PG14"
-	config NUC980_CAN1_PD
-		bool "Rx:PD14, Tx:PD15"
-	config NUC980_CAN1_PA
-		bool "Rx:PA13, Tx:PA14"
-config NUC980_CAN1
-	bool "NUC980 CAN1 support"
-	help
-	  This selects NUC980 CAN1 driver
-
-	config NUC980_CAN2_PB
-		bool "Rx:PB1, Tx:PB3"
-	config NUC980_CAN2_PB_PC
-		bool "Rx:PB8, Tx:PC0"
-	config NUC980_CAN2_PD
-		bool "Rx:PD12, Tx:PD13"
-	config NUC980_CAN2_PE
-		bool "Rx:PE4, Tx:PE5"
-endchoice
-
-config NUC980_CAN3
-	bool "NUC980 CAN3 support"
-	help
-	  This selects NUC980 CAN3 driver
-
-	config NUC980_CAN2_PA
-		bool "Rx:PA15, Tx:PG10"
-	config NUC980_CAN0_PE
-		bool "Rx:PE0, Tx:PE1"
-endchoice
-
-	config NUC980_CAN0_PG
-		bool "Rx:PG11, Tx:PG12"
-	config NUC980_CAN0_PD
-		bool "Rx:PD6, Tx:PD7"
 	config NUC980_CAN0_PC
 		bool "Rx:PC3, Tx:PC4"
-	config NUC980_CAN0_PC
-		bool "Rx:PC3, Tx:PC4"
-	config NUC980_CAN3_PA
-		bool "Rx:PA0, Tx:PA1"
-	config NUC980_CAN3_PE_0
-		bool "Rx:PE6, Tx:PE7"
-	config NUC980_CAN3_PE_1
-		bool "Rx:PE10, Tx:PE12"
-endchoice
-
-endif
-	config NUC980_CAN1_PA
-		bool "Rx:PA13, Tx:PA14"
-	config NUC980_CAN1_PD
-		bool "Rx:PD14, Tx:PD15"
-	config NUC980_CAN1_PG
-		bool "Rx:PG13, Tx:PG14"
-	config NUC980_CAN1_PE
-		bool "Rx:PE2, Tx:PE3"
-endchoice
-
-config NUC980_CAN2
-	bool "NUC980 CAN2 support"
-	help
-	  This selects NUC980 CAN2 driver
-
 	config NUC980_CAN0_PD
 		bool "Rx:PD6, Tx:PD7"
 	config NUC980_CAN0_PG
@@ -144,23 +36,6 @@ config NUC980_CAN1
 	bool "NUC980 CAN1 support"
 	help
 	  This selects NUC980 CAN1 driver
-
-	config NUC980_CAN2_PA
-		bool "Rx:PA15, Tx:PG10"
-	config NUC980_CAN2_PB
-		bool "Rx:PB1, Tx:PB3"
-	config NUC980_CAN2_PB_PC
-		bool "Rx:PB8, Tx:PC0"
-	config NUC980_CAN2_PD
-		bool "Rx:PD12, Tx:PD13"
-	config NUC980_CAN2_PE
-		bool "Rx:PE4, Tx:PE5"
-endchoice
-
-config NUC980_CAN3
-	bool "NUC980 CAN3 support"
-	help
-	  This selects NUC980 CAN3 driver
 
 config ENABLE_CAN1_RX_WAKEUP
 	bool "Enable CAN1 wake-up function"
@@ -175,15 +50,6 @@ choice
 	help
 	  Select CAN1 multi-function pin.
 
-	config NUC980_CAN3_PA
-		bool "Rx:PA0, Tx:PA1"
-	config NUC980_CAN3_PE_0
-		bool "Rx:PE6, Tx:PE7"
-	config NUC980_CAN3_PE_1
-		bool "Rx:PE10, Tx:PE12"
-endchoice
-
-endif
 	config NUC980_CAN1_PA
 		bool "Rx:PA13, Tx:PA14"
 	config NUC980_CAN1_PD

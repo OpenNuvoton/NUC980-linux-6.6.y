@@ -831,8 +831,8 @@ int gpiochip_add_data_with_key(struct gpio_chip *gc, void *data,
 		 */
 		gc->base = base;
 	} else {
-		dev_warn(&gdev->dev,
-			 "Static allocation of GPIO base is deprecated, use dynamic allocation.\n");
+		//dev_warn(&gdev->dev,
+		//	 "Static allocation of GPIO base is deprecated, use dynamic allocation.\n");
 	}
 	gdev->base = base;
 

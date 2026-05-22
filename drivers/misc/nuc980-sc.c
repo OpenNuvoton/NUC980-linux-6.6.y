@@ -1,6 +1,6 @@
 /* linux/driver/misc/nuc980-sc.c
  *
- * Copyright (c) 2018 Nuvoton Technology Corporation
+ * Copyright (c) 2026 Nuvoton Technology Corporation
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify

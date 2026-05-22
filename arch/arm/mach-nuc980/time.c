@@ -1,20 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * linux/arch/arm/mach-nuc980/time.c
+ * Nuvoton NUC980 timer driver
  *
+ * Copyright (C) 2026 Nuvoton Technology Corp.
  *
- * Copyright (c) 2017 Nuvoton technology corporation
- * All rights reserved.
- *
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
+ * Author: SCHung <schung@nuvoton.com>
  */
 
 #include <linux/kernel.h>
@@ -52,6 +42,8 @@
 #include <mach/regs-aic.h>
 #include <mach/regs-serial.h>
 #include <mach/regs-gcr.h>
+#include <linux/of.h>
+#include <linux/of_irq.h>
 
 #define PERIOD		(0x1 << 4)
 #define ONESHOT		(0x0)
@@ -160,8 +152,6 @@ static irqreturn_t nuc980_timer4_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-#include <linux/of.h>
-#include <linux/of_irq.h>
 static void __init nuc980_clockevents_init(void)
 {
 	unsigned int rate;

@@ -1204,53 +1204,64 @@ static long nvt_ecc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 
 	case ECC_IOC_SET_PRI_KEY:
 		memset(ecc_d, 0, sizeof(ecc_d));
-		copy_from_user(ecc_d, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_d, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_SET_PUB_K1:
 		memset(ecc_x1, 0, sizeof(ecc_x1));
-		copy_from_user(ecc_x1, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_x1, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_SET_PUB_K2:
 		memset(ecc_y1, 0, sizeof(ecc_y1));
-		copy_from_user(ecc_y1, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_y1, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_SET_SCALAR_K:
 		memset(ecc_k, 0, sizeof(ecc_k));
-		copy_from_user(ecc_k, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_k, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_SET_MSG:
 		memset(ecc_msg, 0, sizeof(ecc_msg));
-		copy_from_user(ecc_msg, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_msg, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_SET_SIG_R:
 		memset(ecc_r, 0, sizeof(ecc_r));
-		copy_from_user(ecc_r, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_r, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_SET_SIG_S:
 		memset(ecc_s, 0, sizeof(ecc_s));
-		copy_from_user(ecc_s, (char *)arg, pCurve->Echar);
+		if (copy_from_user(ecc_s, (char *)arg, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_GET_PUB_K1:
-		copy_to_user((char *)arg, ecc_x1, pCurve->Echar);
+		if (copy_to_user((char *)arg, ecc_x1, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_GET_PUB_K2:
-		copy_to_user((char *)arg, ecc_y1, pCurve->Echar);
+		if (copy_to_user((char *)arg, ecc_y1, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_GET_SIG_R:
-		copy_to_user((char *)arg, ecc_r, pCurve->Echar);
+		if (copy_to_user((char *)arg, ecc_r, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_GET_SIG_S:
-		copy_to_user((char *)arg, ecc_s, pCurve->Echar);
+		if (copy_to_user((char *)arg, ecc_s, pCurve->Echar))
+			return -EFAULT;
 		break;
 
 	case ECC_IOC_GEN_PUB_KEY:
@@ -1391,40 +1402,48 @@ static long nvt_rsa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 
 	case RSA_IOC_SET_N:
 		memset(g_rsa_N, 0, sizeof(g_rsa_N));
-		copy_from_user(g_rsa_N, (char *)arg, g_rsa_len/4);
+		if (copy_from_user(g_rsa_N, (char *)arg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_SET_E:
 		memset(g_rsa_E, 0, sizeof(g_rsa_E));
-		copy_from_user(g_rsa_E, (char *)arg, g_rsa_len/4);
+		if (copy_from_user(g_rsa_E, (char *)arg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_SET_D:
 		memset(g_rsa_d, 0, sizeof(g_rsa_d));
-		copy_from_user(g_rsa_d, (char *)arg, g_rsa_len/4);
+		if (copy_from_user(g_rsa_d, (char *)arg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_SET_C:
 		memset(g_rsa_C, 0, sizeof(g_rsa_C));
-		copy_from_user(g_rsa_C, (char *)arg, g_rsa_len/4);
+		if (copy_from_user(g_rsa_C, (char *)arg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_SET_MSG:
 		memset(g_rsa_Msg, 0, sizeof(g_rsa_Msg));
-		copy_from_user(g_rsa_Msg, (char *)arg, g_rsa_len/4);
+		if (copy_from_user(g_rsa_Msg, (char *)arg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_SET_SIG:
 		memset(g_rsa_Sig, 0, sizeof(g_rsa_Sig));
-		copy_from_user(g_rsa_Sig, (char *)arg, g_rsa_len/4);
+		if (copy_from_user(g_rsa_Sig, (char *)arg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_GET_MSG:
-		copy_to_user((char *)arg, g_rsa_Msg, g_rsa_len/4);
+		if (copy_to_user((char *)arg, g_rsa_Msg, g_rsa_len/4))
+			return -EFAULT;
 		break;
 
 	case RSA_IOC_GET_SIG:
-		copy_to_user((char *)arg, g_rsa_Sig, g_rsa_len/4);
+		if (copy_to_user((char *)arg, g_rsa_Sig, g_rsa_len/4))
+			return -EFAULT;
 		break;
 		
 	case RSA_IOC_DO_SIGN:

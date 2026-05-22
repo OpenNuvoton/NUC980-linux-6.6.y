@@ -790,20 +790,6 @@ config KEYBOARD_MT6779
 	  To compile this driver as a module, choose M here: the
 	  module will be called mt6779-keypad.
 
-config KEYBOARD_NUC980_KEYS
-	tristate "Nuvoton keys support"
-	depends on OF && ARCH_NUC980
-	help
-	  Say Y here if you want to use Nuvoton keys.
-
-	  Normal GPIO keys mode or keypad matrix mode is determined by
-config KEYBOARD_NUC980_KEYS
-	tristate "Nuvoton keys support"
-	depends on OF && ARCH_NUC980
-	help
-	  Say Y here if you want to use Nuvoton keys.
-
-	  Normal GPIO keys mode or keypad matrix mode is determined by
 config KEYBOARD_MTK_PMIC
 	tristate "MediaTek PMIC keys support"
 	depends on MFD_MT6397 || COMPILE_TEST
@@ -822,5 +808,17 @@ config KEYBOARD_CYPRESS_SF
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cypress-sf.
+
+config KEYBOARD_NUC980_KEYS
+	tristate "Nuvoton keys support"
+	depends on ARCH_NUC980
+	help
+	  Say Y here if you want to use Nuvoton keys.
+
+	  Normal GPIO keys mode or keypad matrix mode is determined by
+	  the configurations in device tree.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called nuc980-keys.
 
 endif

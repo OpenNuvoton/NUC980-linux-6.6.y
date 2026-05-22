@@ -4,7 +4,7 @@
  *  NUC980 Smartcard UART mode driver
  *
  *
- *  Copyright (C) 2018 Nuvoton Technology Corp.
+ *  Copyright (C) 2026 Nuvoton Technology Corp.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -325,7 +325,7 @@ static unsigned int nuc980serial_get_divisor(struct uart_port *port, unsigned in
 }
 
 static void nuc980serial_set_termios(struct uart_port *port, struct ktermios *termios,
-		       struct ktermios *old)
+		       const struct ktermios *old)
 {
 	struct uart_nuc980_port *up = (struct uart_nuc980_port *)port;
 	unsigned int uartctl = 1, ctl;	// 1 is for enable UART mode
@@ -519,7 +519,7 @@ static struct uart_driver nuc980serial_reg = {
 	.nr			= SCUART_NR,
 };
 
-
+#if 0
 /**
  *
  *	Suspend one serial port.
@@ -539,6 +539,7 @@ static void nuc980scuart_resume_port(int line)
 
 	uart_resume_port(&nuc980serial_reg, &up->port);
 }
+#endif
 
 static int nuc980serial_pinctrl(struct platform_device *pdev)
 {
@@ -728,8 +729,8 @@ static void __exit nuc980serial_exit(void)
 module_init(nuc980serial_init);
 module_exit(nuc980serial_exit);
 
-EXPORT_SYMBOL(nuc980scuart_suspend_port);
-EXPORT_SYMBOL(nuc980scuart_resume_port);
+// EXPORT_SYMBOL(nuc980scuart_suspend_port);
+// EXPORT_SYMBOL(nuc980scuart_resume_port);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("NUC980 scuart driver");

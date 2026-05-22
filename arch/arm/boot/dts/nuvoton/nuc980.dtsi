@@ -1486,20 +1486,21 @@
 			map-addr = <0xf0060000>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_qspi0>;
+			pdma_reqsel_tx = <20>;
+			pdma_reqsel_rx = <21>;
+			use_pdma = <1>;
+			num_cs = <2>;
+			lsb = <0>;
+			sleep = <0>;
+			txbitlen = <8>;
+			quad = <1>;
+			bus_num = <0>;
+			spimode = <0>;
+			mrxphase = <0>;
 			status = "okay";
 
                         #address-cells = <1>;
                         #size-cells = <0>;
-
-                        num_cs  = <2>;
-                        lsb      = <0>;
-                        txneg   = <1>;
-                        rxneg   = <0>;
-                        clkpol  = <0>;
-                        divider = <4>;
-                        sleep   = <0>;
-                        txbitlen = <8>;
-                        bus_num = <0>;
 
 			flash: flash@0 {
 				/*compatible = "winbond,w25q128";*/
@@ -1528,7 +1529,7 @@
 		};
 
 		spi0: spi@b0061000 {
-			compatible = "nuvoton,nuc980-spi0";
+			compatible = "nuvoton,nuc980-spi";
 			reg = <0xb0061000 0x1000>;
 			interrupts = <52 4 1>;
 			map-addr = <0xf0061000>;
@@ -1539,20 +1540,20 @@
                         #address-cells = <1>;
                         #size-cells = <0>;
 
-                        num_cs  = <2>;
-                        lsb      = <0>;
-                        txneg   = <1>;
-                        rxneg   = <0>;
-                        clkpol  = <0>;
-                        divider = <4>;
-                        sleep   = <0>;
-                        txbitlen = <8>;
-                        bus_num = <1>;
-
+			pdma_reqsel_tx = <22>;
+			pdma_reqsel_rx = <23>;
+			use_pdma = <1>;
+			num_cs = <2>;
+			lsb = <0>;
+			sleep = <0>;
+			txbitlen = <8>;
+			bus_num = <0>;
+			spimode = <0>;
+			mrxphase = <0>;
 		};
 
 		spi1: spi@b0062000 {
-			compatible = "nuvoton,nuc980-spi1";
+			compatible = "nuvoton,nuc980-spi";
 			reg = <0xb0062000 0x1000>;
 			interrupts = <50 4 1>;
 			map-addr = <0xf0062000>;
@@ -1563,16 +1564,16 @@
                         #address-cells = <1>;
                         #size-cells = <0>;
 
-                        num_cs  = <2>;
-                        lsb      = <0>;
-                        txneg   = <1>;
-                        rxneg   = <0>;
-                        clkpol  = <0>;
-                        divider = <4>;
-                        sleep   = <0>;
-                        txbitlen = <8>;
-                        bus_num = <2>;
-
+			pdma_reqsel_tx = <24>;
+			pdma_reqsel_rx = <25>;
+			use_pdma = <0>;
+			num_cs = <2>;
+			lsb = <0>;
+			sleep = <0>;
+			txbitlen = <8>;
+			bus_num = <0>;
+			spimode = <0>;
+			mrxphase = <0>;
 		};
 
 		i2c0: i2c0@b0080000 {
@@ -2004,7 +2005,7 @@
 
 		i2s@b0020000 {
 			compatible = "nuvoton,nuc980-audio-i2s";
-			reg = <0xb0020000 0x100>;
+			reg = <0xb0020000 0x1000>;
 			interrupts = <12 4 1>;
 			map-addr = <0xf0020000>;
 			pinctrl-names = "default";

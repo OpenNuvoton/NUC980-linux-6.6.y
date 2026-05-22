@@ -20,7 +20,8 @@
 #include <crypto/aead.h>
 #include <crypto/internal/aead.h>
 #include <crypto/internal/skcipher.h>
-#include <crypto/sha.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2.h>
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
 
@@ -167,7 +168,7 @@ static int nuc980_aes_complete(struct nu_aes_dev *dd, int err)
 	}
 
 	dd->flags &= ~AES_FLAGS_BUSY;
-	dd->areq->complete(dd->areq, err);
+	crypto_request_complete(dd->areq, err);
 	/* Handle new request */
 	tasklet_schedule(&dd->queue_task);
 	return err;
@@ -596,6 +597,8 @@ static int nuc980_sha_final(struct ahash_request *req)
 static int nuc980_hmac_sha_init(struct ahash_request *req, int is_hmac)
 {
 	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct nuc980_base_ctx *ctx = crypto_ahash_ctx(tfm);
+
 	volatile struct nuc980_crypto_regs  *cregs = nuc980_crdev.regs;
 
 	mutex_lock(&nuc980_crdev.sha_lock);
@@ -603,8 +606,12 @@ static int nuc980_hmac_sha_init(struct ahash_request *req, int is_hmac)
 	// printk("nuc980_sha_init: digest size: %d %s\n", crypto_ahash_digestsize(tfm), is_hmac ? "(HMAC)" : "");
 	cregs->CRPT_HMAC_CTL = HMAC_INSWAP | HMAC_OUTSWAP;
 
-	if (is_hmac)
+	if (is_hmac){
+		memcpy((u8 *)nuc980_crdev.hmac_inbuf, ctx->hmac_key_buff, ctx->hmac_key_len);
+		ctx->sha_buffer_cnt = ctx->hmac_key_len;
+		cregs->CRPT_HMAC_KEYCNT = ctx->hmac_key_len;
 		cregs->CRPT_HMAC_CTL |= HMAC_EN;
+	}
 	else
 		cregs->CRPT_HMAC_KEYCNT = 0;
 
@@ -644,24 +651,18 @@ static int nuc980_sha_init(struct ahash_request *req)
 
 static int nuc980_hmac_init(struct ahash_request *req)
 {
-	struct nuc980_base_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
-
-	memcpy((u8 *)nuc980_crdev.hmac_inbuf, ctx->hmac_key_buff, ctx->hmac_key_len);
-	ctx->sha_buffer_cnt = ctx->hmac_key_len;
 	return nuc980_hmac_sha_init(req, 1);
 }
 
 static int nuc980_hmac_setkey(struct crypto_ahash *tfm, const u8 *key, unsigned int keylen)
 {
 	struct nuc980_base_ctx *ctx = crypto_ahash_ctx(tfm);
-	volatile struct nuc980_crypto_regs  *cregs = nuc980_crdev.regs;
 
 	if (keylen > HMAC_KEY_MAX_LEN)
 		return -EINVAL;
 
 	ctx->hmac_key_len = keylen;
 	memcpy(ctx->hmac_key_buff, key, keylen);
-	cregs->CRPT_HMAC_KEYCNT = keylen;
 	return 0;
 }
 

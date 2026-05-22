@@ -1,18 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- *  linux/drivers/net/can/nuc980_can/nuc980_can.c
  *
  *  NUC980 CAN driver
  *
  *
- *  Copyright (C) 2018 Nuvoton Technology Corp.
+ *  Copyright (C) 2025 Nuvoton Technology Corp.
  *
- * Thi980s program is free software; you can redistribute it and/or modify
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
  */
-
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -28,143 +27,136 @@
 #include <linux/can.h>
 #include <linux/can/dev.h>
 #include <linux/can/error.h>
-#include <linux/can/led.h>
 
 #include "nuc980_can.h"
 
-//#define DISABLE_SIE 1
-
 /* Number of interface registers */
-#define IF_ENUM_REG_LEN		11
-#define C_CAN_IFACE(reg, iface)	(C_CAN_IF1_##reg + (iface) * IF_ENUM_REG_LEN)
+#define IF_ENUM_REG_LEN 11
+#define C_CAN_IFACE(reg, iface) (C_CAN_IF1_##reg + (iface) * IF_ENUM_REG_LEN)
 
 /* control extension register D_CAN specific */
-#define CONTROL_EX_PDR		BIT(8)
+#define CONTROL_EX_PDR BIT(8)
 
 /* control register */
-#define CONTROL_TEST		BIT(7)
-#define CONTROL_CCE		BIT(6)
-#define CONTROL_DISABLE_AR	BIT(5)
-#define CONTROL_ENABLE_AR	(0 << 5)
-#define CONTROL_EIE		BIT(3)
-#define CONTROL_SIE		BIT(2)
-#define CONTROL_IE		BIT(1)
-#define CONTROL_INIT		BIT(0)
+#define CONTROL_TEST BIT(7)
+#define CONTROL_CCE BIT(6)
+#define CONTROL_DISABLE_AR BIT(5)
+#define CONTROL_ENABLE_AR (0 << 5)
+#define CONTROL_EIE BIT(3)
+#define CONTROL_SIE BIT(2)
+#define CONTROL_IE BIT(1)
+#define CONTROL_INIT BIT(0)
 
 /* test register */
-#define TEST_RX			BIT(7)
-#define TEST_TX1		BIT(6)
-#define TEST_TX2		BIT(5)
-#define TEST_LBACK		BIT(4)
-#define TEST_SILENT		BIT(3)
-#define TEST_BASIC		BIT(2)
+#define TEST_RX BIT(7)
+#define TEST_TX1 BIT(6)
+#define TEST_TX2 BIT(5)
+#define TEST_LBACK BIT(4)
+#define TEST_SILENT BIT(3)
+#define TEST_BASIC BIT(2)
 
 /* status register */
-#define STATUS_PDA		BIT(10)
-#define STATUS_BOFF		BIT(7)
-#define STATUS_EWARN		BIT(6)
-#define STATUS_EPASS		BIT(5)
-#define STATUS_RXOK		BIT(4)
-#define STATUS_TXOK		BIT(3)
+#define STATUS_PDA BIT(10)
+#define STATUS_BOFF BIT(7)
+#define STATUS_EWARN BIT(6)
+#define STATUS_EPASS BIT(5)
+#define STATUS_RXOK BIT(4)
+#define STATUS_TXOK BIT(3)
 
 /* error counter register */
-#define ERR_CNT_TEC_MASK	0xff
-#define ERR_CNT_TEC_SHIFT	0
-#define ERR_CNT_REC_SHIFT	8
-#define ERR_CNT_REC_MASK	(0x7f << ERR_CNT_REC_SHIFT)
-#define ERR_CNT_RP_SHIFT	15
-#define ERR_CNT_RP_MASK		(0x1 << ERR_CNT_RP_SHIFT)
+#define ERR_CNT_TEC_MASK 0xff
+#define ERR_CNT_TEC_SHIFT 0
+#define ERR_CNT_REC_SHIFT 8
+#define ERR_CNT_REC_MASK (0x7f << ERR_CNT_REC_SHIFT)
+#define ERR_CNT_RP_SHIFT 15
+#define ERR_CNT_RP_MASK (0x1 << ERR_CNT_RP_SHIFT)
 
 /* bit-timing register */
-#define BTR_BRP_MASK		0x3f
-#define BTR_BRP_SHIFT		0
-#define BTR_SJW_SHIFT		6
-#define BTR_SJW_MASK		(0x3 << BTR_SJW_SHIFT)
-#define BTR_TSEG1_SHIFT		8
-#define BTR_TSEG1_MASK		(0xf << BTR_TSEG1_SHIFT)
-#define BTR_TSEG2_SHIFT		12
-#define BTR_TSEG2_MASK		(0x7 << BTR_TSEG2_SHIFT)
+#define BTR_BRP_MASK 0x3f
+#define BTR_BRP_SHIFT 0
+#define BTR_SJW_SHIFT 6
+#define BTR_SJW_MASK (0x3 << BTR_SJW_SHIFT)
+#define BTR_TSEG1_SHIFT 8
+#define BTR_TSEG1_MASK (0xf << BTR_TSEG1_SHIFT)
+#define BTR_TSEG2_SHIFT 12
+#define BTR_TSEG2_MASK (0x7 << BTR_TSEG2_SHIFT)
 
 /* brp extension register */
-#define BRP_EXT_BRPE_MASK	0x0f
-#define BRP_EXT_BRPE_SHIFT	0
+#define BRP_EXT_BRPE_MASK 0x0f
+#define BRP_EXT_BRPE_SHIFT 0
 
 /* IFx command request */
-#define IF_COMR_BUSY		BIT(15)
+#define IF_COMR_BUSY BIT(15)
 
 /* IFx command mask */
-#define IF_COMM_WR		BIT(7)
-#define IF_COMM_MASK		BIT(6)
-#define IF_COMM_ARB		BIT(5)
-#define IF_COMM_CONTROL		BIT(4)
-#define IF_COMM_CLR_INT_PND	BIT(3)
-#define IF_COMM_TXRQST		BIT(2)
-#define IF_COMM_DATAA		BIT(1)
-#define IF_COMM_DATAB		BIT(0)
-#define IF_COMM_ALL		(IF_COMM_MASK | IF_COMM_ARB | \
-				IF_COMM_CONTROL | IF_COMM_TXRQST | \
-				IF_COMM_DATAA | IF_COMM_DATAB)
+#define IF_COMM_WR BIT(7)
+#define IF_COMM_MASK BIT(6)
+#define IF_COMM_ARB BIT(5)
+#define IF_COMM_CONTROL BIT(4)
+#define IF_COMM_CLR_INT_PND BIT(3)
+#define IF_COMM_TXRQST BIT(2)
+#define IF_COMM_DATAA BIT(1)
+#define IF_COMM_DATAB BIT(0)
+#define IF_COMM_ALL                                                      \
+	(IF_COMM_MASK | IF_COMM_ARB | IF_COMM_CONTROL | IF_COMM_TXRQST | \
+	 IF_COMM_DATAA | IF_COMM_DATAB)
 
 /* IFx arbitration */
-#define IF_ARB_MSGVAL		BIT(15)
-#define IF_ARB_MSGXTD		BIT(14)
-#define IF_ARB_TRANSMIT		BIT(13)
+#define IF_ARB_MSGVAL BIT(15)
+#define IF_ARB_MSGXTD BIT(14)
+#define IF_ARB_TRANSMIT BIT(13)
 
 /* IFx message control */
-#define IF_MCONT_NEWDAT		BIT(15)
-#define IF_MCONT_MSGLST		BIT(14)
-#define IF_MCONT_CLR_MSGLST	(0 << 14)
-#define IF_MCONT_INTPND		BIT(13)
-#define IF_MCONT_UMASK		BIT(12)
-#define IF_MCONT_TXIE		BIT(11)
-#define IF_MCONT_RXIE		BIT(10)
-#define IF_MCONT_RMTEN		BIT(9)
-#define IF_MCONT_TXRQST		BIT(8)
-#define IF_MCONT_EOB		BIT(7)
-#define IF_MCONT_DLC_MASK	0xf
+#define IF_MCONT_NEWDAT BIT(15)
+#define IF_MCONT_MSGLST BIT(14)
+#define IF_MCONT_CLR_MSGLST (0 << 14)
+#define IF_MCONT_INTPND BIT(13)
+#define IF_MCONT_UMASK BIT(12)
+#define IF_MCONT_TXIE BIT(11)
+#define IF_MCONT_RXIE BIT(10)
+#define IF_MCONT_RMTEN BIT(9)
+#define IF_MCONT_TXRQST BIT(8)
+#define IF_MCONT_EOB BIT(7)
+#define IF_MCONT_DLC_MASK 0xf
 
-/*
- * IFx register masks:
+/* IFx register masks:
  * allow easy operation on 16-bit registers when the
  * argument is 32-bit instead
  */
-#define IFX_WRITE_LOW_16BIT(x)	((x) & 0xFFFF)
-#define IFX_WRITE_HIGH_16BIT(x)	(((x) & 0xFFFF0000) >> 16)
+#define IFX_WRITE_LOW_16BIT(x) ((x) & 0xFFFF)
+#define IFX_WRITE_HIGH_16BIT(x) (((x) & 0xFFFF0000) >> 16)
 
 /* message object split */
-#define C_CAN_NO_OF_OBJECTS	32
-#define C_CAN_MSG_OBJ_RX_NUM	16
-#define C_CAN_MSG_OBJ_TX_NUM	16
+#define C_CAN_NO_OF_OBJECTS 32
+#define C_CAN_MSG_OBJ_RX_NUM 16
+#define C_CAN_MSG_OBJ_TX_NUM 16
 
-#define C_CAN_MSG_OBJ_RX_FIRST	1
-#define C_CAN_MSG_OBJ_RX_LAST	(C_CAN_MSG_OBJ_RX_FIRST + \
-				C_CAN_MSG_OBJ_RX_NUM - 1)
+#define C_CAN_MSG_OBJ_RX_FIRST 1
+#define C_CAN_MSG_OBJ_RX_LAST \
+	(C_CAN_MSG_OBJ_RX_FIRST + C_CAN_MSG_OBJ_RX_NUM - 1)
 
-#define C_CAN_MSG_OBJ_TX_FIRST	(C_CAN_MSG_OBJ_RX_LAST + 1)
-#define C_CAN_MSG_OBJ_TX_LAST	(C_CAN_MSG_OBJ_TX_FIRST + \
-				C_CAN_MSG_OBJ_TX_NUM - 1)
+#define C_CAN_MSG_OBJ_TX_FIRST (C_CAN_MSG_OBJ_RX_LAST + 1)
+#define C_CAN_MSG_OBJ_TX_LAST \
+	(C_CAN_MSG_OBJ_TX_FIRST + C_CAN_MSG_OBJ_TX_NUM - 1)
 
-#define C_CAN_MSG_OBJ_RX_SPLIT	9
-#define C_CAN_MSG_RX_LOW_LAST	(C_CAN_MSG_OBJ_RX_SPLIT - 1)
+#define C_CAN_MSG_OBJ_RX_SPLIT 9
+#define C_CAN_MSG_RX_LOW_LAST (C_CAN_MSG_OBJ_RX_SPLIT - 1)
 
-#define C_CAN_NEXT_MSG_OBJ_MASK	(C_CAN_MSG_OBJ_TX_NUM - 1)
-#define RECEIVE_OBJECT_BITS	0x0000ffff
+#define C_CAN_NEXT_MSG_OBJ_MASK (C_CAN_MSG_OBJ_TX_NUM - 1)
+#define RECEIVE_OBJECT_BITS 0x0000ffff
 
 /* status interrupt */
-#define STATUS_INTERRUPT	0x8000
+#define STATUS_INTERRUPT 0x8000
 
 /* global interrupt masks */
-#define ENABLE_ALL_INTERRUPTS	1
-#define DISABLE_ALL_INTERRUPTS	0
+#define ENABLE_ALL_INTERRUPTS 1
+#define DISABLE_ALL_INTERRUPTS 0
 
 /* minimum timeout for checking BUSY status */
-#define MIN_TIMEOUT_VALUE	6
+#define MIN_TIMEOUT_VALUE 6
 
 /* Wait for ~1 sec for INIT bit */
-#define INIT_WAIT_MS		1000
-
-/* napi related */
-#define C_CAN_NAPI_WEIGHT	C_CAN_MSG_OBJ_RX_NUM
+#define INIT_WAIT_MS 1000
 
 /* c_can lec values */
 enum c_can_lec_type {
@@ -178,8 +170,7 @@ enum c_can_lec_type {
 	LEC_UNUSED,
 };
 
-/*
- * c_can error types:
+/* c_can error types:
  * Bus errors (BUS_OFF, ERROR_WARNING, ERROR_PASSIVE) are supported
  */
 enum c_can_bus_error_types {
@@ -191,13 +182,13 @@ enum c_can_bus_error_types {
 
 static const struct can_bittiming_const c_can_bittiming_const = {
 	.name = KBUILD_MODNAME,
-	.tseg1_min = 2,		/* Time segment 1 = prop_seg + phase_seg1 */
+	.tseg1_min = 2, /* Time segment 1 = prop_seg + phase_seg1 */
 	.tseg1_max = 16,
-	.tseg2_min = 1,		/* Time segment 2 = phase_seg2 */
+	.tseg2_min = 1, /* Time segment 2 = phase_seg2 */
 	.tseg2_max = 8,
 	.sjw_max = 4,
 	.brp_min = 1,
-	.brp_max = 1024,	/* 6-bit BRP field + 4-bit BRPE field*/
+	.brp_max = 1024, /* 6-bit BRP field + 4-bit BRPE field*/
 	.brp_inc = 1,
 };
 
@@ -234,38 +225,37 @@ static inline void c_can_reset_ram(const struct c_can_priv *priv, bool enable)
 static inline int get_tx_next_msg_obj(const struct c_can_priv *priv)
 {
 	return (priv->tx_next & C_CAN_NEXT_MSG_OBJ_MASK) +
-			C_CAN_MSG_OBJ_TX_FIRST;
+	       C_CAN_MSG_OBJ_TX_FIRST;
 }
 
 static inline int get_tx_echo_msg_obj(const struct c_can_priv *priv)
 {
 	return (priv->tx_echo & C_CAN_NEXT_MSG_OBJ_MASK) +
-			C_CAN_MSG_OBJ_TX_FIRST;
+	       C_CAN_MSG_OBJ_TX_FIRST;
 }
 
 static u32 c_can_read_reg32(struct c_can_priv *priv, enum reg index)
 {
 	u32 val = priv->read_reg(priv, index);
-	val |= ((u32) priv->read_reg(priv, index + 1)) << 16;
+
+	val |= ((u32)priv->read_reg(priv, index + 1)) << 16;
 	return val;
 }
 
-static void c_can_enable_all_interrupts(struct c_can_priv *priv,
-						int enable)
+static void c_can_enable_all_interrupts(struct c_can_priv *priv, int enable)
 {
-	unsigned int cntrl_save = priv->read_reg(priv,
-						C_CAN_CTRL_REG);
+	unsigned int cntrl_save = priv->read_reg(priv, C_CAN_CTRL_REG);
 
-	if (enable){
-		#ifndef DISABLE_SIE		
+	if (enable) {
+#ifndef DISABLE_SIE
 		cntrl_save |= (CONTROL_SIE | CONTROL_EIE | CONTROL_IE);
-		#else
+#else
 		cntrl_save |= (CONTROL_EIE | CONTROL_IE);
 		cntrl_save &= ~(CONTROL_SIE);
-		#endif
-	}
-	else
+#endif
+	} else {
 		cntrl_save &= ~(CONTROL_EIE | CONTROL_IE | CONTROL_SIE);
+	}
 
 	cntrl_save &= ~CONTROL_INIT;
 	priv->write_reg(priv, C_CAN_CTRL_REG, cntrl_save);
@@ -275,8 +265,7 @@ static inline int c_can_msg_obj_is_busy(struct c_can_priv *priv, int iface)
 {
 	int count = MIN_TIMEOUT_VALUE;
 
-	while (count && priv->read_reg(priv,
-				C_CAN_IFACE(COMREQ_REG, iface)) &
+	while (count && priv->read_reg(priv, C_CAN_IFACE(COMREQ_REG, iface)) &
 				IF_COMR_BUSY) {
 		count--;
 		udelay(1);
@@ -288,13 +277,12 @@ static inline int c_can_msg_obj_is_busy(struct c_can_priv *priv, int iface)
 	return 0;
 }
 
-static inline void c_can_object_get(struct net_device *dev,
-					int iface, int objno, int mask)
+static inline void c_can_object_get(struct net_device *dev, int iface,
+				    int objno, int mask)
 {
 	struct c_can_priv *priv = netdev_priv(dev);
 
-	/*
-	 * As per specs, after writting the message object number in the
+	/* As per specs, after writing the message object number in the
 	 * IF command request register the transfer b/w interface
 	 * register and message RAM must be complete in 6 CAN-CLK
 	 * period.
@@ -308,13 +296,12 @@ static inline void c_can_object_get(struct net_device *dev,
 		netdev_err(dev, "timed out in object get\n");
 }
 
-static inline void c_can_object_put(struct net_device *dev,
-					int iface, int objno, int mask)
+static inline void c_can_object_put(struct net_device *dev, int iface,
+				    int objno, int mask)
 {
 	struct c_can_priv *priv = netdev_priv(dev);
 
-	/*
-	 * As per specs, after writting the message object number in the
+	/* As per specs, after writing the message object number in the
 	 * IF command request register the transfer b/w interface
 	 * register and message RAM must be complete in 6 CAN-CLK
 	 * period.
@@ -328,8 +315,8 @@ static inline void c_can_object_put(struct net_device *dev,
 		netdev_err(dev, "timed out in object put\n");
 }
 
-static void c_can_write_msg_object(struct net_device *dev,
-			int iface, struct can_frame *frame, int objno)
+static void c_can_write_msg_object(struct net_device *dev, int iface,
+				   struct can_frame *frame, int objno)
 {
 	int i;
 	u16 flags = 0;
@@ -342,15 +329,16 @@ static void c_can_write_msg_object(struct net_device *dev,
 	if (frame->can_id & CAN_EFF_FLAG) {
 		id = frame->can_id & CAN_EFF_MASK;
 		flags |= IF_ARB_MSGXTD;
-	} else
+	} else {
 		id = ((frame->can_id & CAN_SFF_MASK) << 18);
+	}
 
 	flags |= IF_ARB_MSGVAL;
 
 	priv->write_reg(priv, C_CAN_IFACE(ARB1_REG, iface),
-				IFX_WRITE_LOW_16BIT(id));
-	priv->write_reg(priv, C_CAN_IFACE(ARB2_REG, iface), flags |
-				IFX_WRITE_HIGH_16BIT(id));
+			IFX_WRITE_LOW_16BIT(id));
+	priv->write_reg(priv, C_CAN_IFACE(ARB2_REG, iface),
+			flags | IFX_WRITE_HIGH_16BIT(id));
 
 	for (i = 0; i < frame->can_dlc; i += 2) {
 		priv->write_reg(priv, C_CAN_IFACE(DATA1_REG, iface) + i / 2,
@@ -360,51 +348,48 @@ static void c_can_write_msg_object(struct net_device *dev,
 	/* enable interrupt for this message object */
 	priv->write_reg(priv, C_CAN_IFACE(MSGCTRL_REG, iface),
 			IF_MCONT_TXIE | IF_MCONT_TXRQST | IF_MCONT_EOB |
-			frame->can_dlc);
+				frame->can_dlc);
 	c_can_object_put(dev, iface, objno, IF_COMM_ALL);
 }
 
-static inline void c_can_mark_rx_msg_obj(struct net_device *dev,
-						int iface, int ctrl_mask,
-						int obj)
+static inline void c_can_mark_rx_msg_obj(struct net_device *dev, int iface,
+					 int ctrl_mask, int obj)
 {
 	struct c_can_priv *priv = netdev_priv(dev);
 
 	priv->write_reg(priv, C_CAN_IFACE(MSGCTRL_REG, iface),
 			ctrl_mask & ~(IF_MCONT_MSGLST | IF_MCONT_INTPND));
 	c_can_object_put(dev, iface, obj, IF_COMM_CONTROL);
-
 }
 
 static inline void c_can_activate_all_lower_rx_msg_obj(struct net_device *dev,
-						int iface,
-						int ctrl_mask)
+						       int iface, int ctrl_mask)
 {
 	int i;
 	struct c_can_priv *priv = netdev_priv(dev);
 
 	for (i = C_CAN_MSG_OBJ_RX_FIRST; i <= C_CAN_MSG_RX_LOW_LAST; i++) {
 		priv->write_reg(priv, C_CAN_IFACE(MSGCTRL_REG, iface),
-				ctrl_mask & ~(IF_MCONT_MSGLST |
-					IF_MCONT_INTPND | IF_MCONT_NEWDAT));
+				ctrl_mask &
+					~(IF_MCONT_MSGLST | IF_MCONT_INTPND |
+					  IF_MCONT_NEWDAT));
 		c_can_object_put(dev, iface, i, IF_COMM_CONTROL);
 	}
 }
 
-static inline void c_can_activate_rx_msg_obj(struct net_device *dev,
-						int iface, int ctrl_mask,
-						int obj)
+static inline void c_can_activate_rx_msg_obj(struct net_device *dev, int iface,
+					     int ctrl_mask, int obj)
 {
 	struct c_can_priv *priv = netdev_priv(dev);
 
 	priv->write_reg(priv, C_CAN_IFACE(MSGCTRL_REG, iface),
-			ctrl_mask & ~(IF_MCONT_MSGLST |
-				IF_MCONT_INTPND | IF_MCONT_NEWDAT));
+			ctrl_mask & ~(IF_MCONT_MSGLST | IF_MCONT_INTPND |
+				      IF_MCONT_NEWDAT));
 	c_can_object_put(dev, iface, obj, IF_COMM_CONTROL);
 }
 
-static void c_can_handle_lost_msg_obj(struct net_device *dev,
-					int iface, int objno)
+static void c_can_handle_lost_msg_obj(struct net_device *dev, int iface,
+				      int objno)
 {
 	struct c_can_priv *priv = netdev_priv(dev);
 	struct net_device_stats *stats = &dev->stats;
@@ -449,23 +434,23 @@ static int c_can_read_msg_object(struct net_device *dev, int iface, int ctrl)
 		return -ENOMEM;
 	}
 
-	frame->can_dlc = get_can_dlc(ctrl & 0x0F);
+	frame->can_dlc = ctrl & 0x0F;
 
-	flags =	priv->read_reg(priv, C_CAN_IFACE(ARB2_REG, iface));
+	flags = priv->read_reg(priv, C_CAN_IFACE(ARB2_REG, iface));
 	val = priv->read_reg(priv, C_CAN_IFACE(ARB1_REG, iface)) |
-		(flags << 16);
+	      (flags << 16);
 
 	if (flags & IF_ARB_MSGXTD)
 		frame->can_id = (val & CAN_EFF_MASK) | CAN_EFF_FLAG;
 	else
 		frame->can_id = (val >> 18) & CAN_SFF_MASK;
 
-	if (flags & IF_ARB_TRANSMIT)
+	if (flags & IF_ARB_TRANSMIT) {
 		frame->can_id |= CAN_RTR_FLAG;
-	else {
+	} else {
 		for (i = 0; i < frame->can_dlc; i += 2) {
 			data = priv->read_reg(priv,
-				C_CAN_IFACE(DATA1_REG, iface) + i / 2);
+			C_CAN_IFACE(DATA1_REG, iface) + i / 2);
 			frame->data[i] = data;
 			frame->data[i + 1] = data >> 8;
 		}
@@ -476,14 +461,12 @@ static int c_can_read_msg_object(struct net_device *dev, int iface, int ctrl)
 	stats->rx_packets++;
 	stats->rx_bytes += frame->can_dlc;
 
-	can_led_event(dev, CAN_LED_EVENT_RX);
-
 	return 0;
 }
 
 static void c_can_setup_receive_object(struct net_device *dev, int iface,
-					int objno, unsigned int mask,
-					unsigned int id, unsigned int mcont)
+				       int objno, unsigned int mask,
+				       unsigned int id, unsigned int mcont)
 {
 	struct c_can_priv *priv = netdev_priv(dev);
 
@@ -505,7 +488,7 @@ static void c_can_setup_receive_object(struct net_device *dev, int iface,
 	c_can_object_put(dev, iface, objno, IF_COMM_ALL & ~IF_COMM_TXRQST);
 
 	netdev_dbg(dev, "obj no:%d, msgval:0x%08x\n", objno,
-			c_can_read_reg32(priv, C_CAN_MSGVAL1_REG));
+		   c_can_read_reg32(priv, C_CAN_MSGVAL1_REG));
 }
 
 static void c_can_inval_msg_object(struct net_device *dev, int iface, int objno)
@@ -519,15 +502,14 @@ static void c_can_inval_msg_object(struct net_device *dev, int iface, int objno)
 	c_can_object_put(dev, iface, objno, IF_COMM_ARB | IF_COMM_CONTROL);
 
 	netdev_dbg(dev, "obj no:%d, msgval:0x%08x\n", objno,
-			c_can_read_reg32(priv, C_CAN_MSGVAL1_REG));
+		   c_can_read_reg32(priv, C_CAN_MSGVAL1_REG));
 }
 
 static inline int c_can_is_next_tx_obj_busy(struct c_can_priv *priv, int objno)
 {
 	int val = c_can_read_reg32(priv, C_CAN_TXRQST1_REG);
 
-	/*
-	 * as transmission request register's bit n-1 corresponds to
+	/* as transmission request register's bit n-1 corresponds to
 	 * message object n, we need to handle the same properly.
 	 */
 	if (val & (1 << (objno - 1)))
@@ -536,8 +518,7 @@ static inline int c_can_is_next_tx_obj_busy(struct c_can_priv *priv, int objno)
 	return 0;
 }
 
-static netdev_tx_t c_can_start_xmit(struct sk_buff *skb,
-					struct net_device *dev)
+static netdev_tx_t c_can_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	u32 msg_obj_no;
 	struct c_can_priv *priv = netdev_priv(dev);
@@ -550,15 +531,15 @@ static netdev_tx_t c_can_start_xmit(struct sk_buff *skb,
 
 	/* prepare message object for transmission */
 	c_can_write_msg_object(dev, 0, frame, msg_obj_no);
-	can_put_echo_skb(skb, dev, msg_obj_no - C_CAN_MSG_OBJ_TX_FIRST);
+	can_put_echo_skb(skb, dev, msg_obj_no - C_CAN_MSG_OBJ_TX_FIRST,
+			 skb->len);
 
-	/*
-	 * we have to stop the queue in case of a wrap around or
+	/* we have to stop the queue in case of a wrap around or
 	 * if the next TX message object is still in use
 	 */
 	priv->tx_next++;
 	if (c_can_is_next_tx_obj_busy(priv, get_tx_next_msg_obj(priv)) ||
-			(priv->tx_next & C_CAN_NEXT_MSG_OBJ_MASK) == 0)
+	    (priv->tx_next & C_CAN_NEXT_MSG_OBJ_MASK) == 0)
 		netif_stop_queue(dev);
 
 	return NETDEV_TX_OK;
@@ -581,11 +562,10 @@ static int c_can_set_bittiming(struct net_device *dev)
 	tseg1 = bt->prop_seg + bt->phase_seg1 - 1;
 	tseg2 = bt->phase_seg2 - 1;
 	reg_btr = brp | (sjw << BTR_SJW_SHIFT) | (tseg1 << BTR_TSEG1_SHIFT) |
-			(tseg2 << BTR_TSEG2_SHIFT);
+		  (tseg2 << BTR_TSEG2_SHIFT);
 	reg_brpe = brpe & BRP_EXT_BRPE_MASK;
 
-	netdev_info(dev,
-		"setting BTR=%04x BRPE=%04x\n", reg_btr, reg_brpe);
+	netdev_info(dev, "setting BTR=%04x BRPE=%04x\n", reg_btr, reg_brpe);
 
 	ctrl_save = priv->read_reg(priv, C_CAN_CTRL_REG);
 	priv->write_reg(priv, C_CAN_CTRL_REG,
@@ -597,8 +577,7 @@ static int c_can_set_bittiming(struct net_device *dev)
 	return 0;
 }
 
-/*
- * Configure C_CAN message objects for Tx and Rx purposes:
+/* Configure C_CAN message objects for Tx and Rx purposes:
  * C_CAN provides a total of 32 message objects that can be configured
  * either for Tx or Rx purposes. Here the first 16 message objects are used as
  * a reception FIFO. The end of reception FIFO is signified by the EoB bit
@@ -617,14 +596,15 @@ static void c_can_configure_msg_objects(struct net_device *dev)
 	/* setup receive message objects */
 	for (i = C_CAN_MSG_OBJ_RX_FIRST; i < C_CAN_MSG_OBJ_RX_LAST; i++)
 		c_can_setup_receive_object(dev, 0, i, 0, 0,
-			(IF_MCONT_RXIE | IF_MCONT_UMASK) & ~IF_MCONT_EOB);
+					   (IF_MCONT_RXIE | IF_MCONT_UMASK) &
+						   ~IF_MCONT_EOB);
 
 	c_can_setup_receive_object(dev, 0, C_CAN_MSG_OBJ_RX_LAST, 0, 0,
-			IF_MCONT_EOB | IF_MCONT_RXIE | IF_MCONT_UMASK);
+				   IF_MCONT_EOB | IF_MCONT_RXIE |
+					   IF_MCONT_UMASK);
 }
 
-/*
- * Configure C_CAN chip:
+/* Configure C_CAN chip:
  * - enable/disable auto-retransmission
  * - set operating mode
  * - configure message objects
@@ -634,25 +614,26 @@ static void c_can_chip_config(struct net_device *dev)
 	struct c_can_priv *priv = netdev_priv(dev);
 
 	/* enable automatic retransmission */
-	priv->write_reg(priv, C_CAN_CTRL_REG,
-			CONTROL_ENABLE_AR);
+	priv->write_reg(priv, C_CAN_CTRL_REG, CONTROL_ENABLE_AR);
 
 	if ((priv->can.ctrlmode & CAN_CTRLMODE_LISTENONLY) &&
 	    (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK)) {
 		/* loopback + silent mode : useful for hot self-test */
-		priv->write_reg(priv, C_CAN_CTRL_REG, CONTROL_EIE |
-				CONTROL_SIE | CONTROL_IE | CONTROL_TEST);
-		priv->write_reg(priv, C_CAN_TEST_REG,
-				TEST_LBACK | TEST_SILENT);
+		priv->write_reg(priv, C_CAN_CTRL_REG,
+				CONTROL_EIE | CONTROL_SIE | CONTROL_IE |
+					CONTROL_TEST);
+		priv->write_reg(priv, C_CAN_TEST_REG, TEST_LBACK | TEST_SILENT);
 	} else if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK) {
 		/* loopback mode : useful for self-test function */
-		priv->write_reg(priv, C_CAN_CTRL_REG, CONTROL_EIE |
-				CONTROL_SIE | CONTROL_IE | CONTROL_TEST);
+		priv->write_reg(priv, C_CAN_CTRL_REG,
+				CONTROL_EIE | CONTROL_SIE | CONTROL_IE |
+					CONTROL_TEST);
 		priv->write_reg(priv, C_CAN_TEST_REG, TEST_LBACK);
 	} else if (priv->can.ctrlmode & CAN_CTRLMODE_LISTENONLY) {
 		/* silent mode : bus-monitoring mode */
-		priv->write_reg(priv, C_CAN_CTRL_REG, CONTROL_EIE |
-				CONTROL_SIE | CONTROL_IE | CONTROL_TEST);
+		priv->write_reg(priv, C_CAN_CTRL_REG,
+				CONTROL_EIE | CONTROL_SIE | CONTROL_IE |
+					CONTROL_TEST);
 		priv->write_reg(priv, C_CAN_TEST_REG, TEST_SILENT);
 	} else {
 		/* normal mode*/
@@ -682,7 +663,8 @@ static void c_can_start(struct net_device *dev)
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
 
 	/* reset tx helper pointers */
-	priv->tx_next = priv->tx_echo = 0;
+	priv->tx_echo = 0;
+	priv->tx_next = 0;
 
 	/* enable status change, error and module interrupts */
 	c_can_enable_all_interrupts(priv, ENABLE_ALL_INTERRUPTS);
@@ -720,8 +702,7 @@ static int __c_can_get_berr_counter(const struct net_device *dev,
 	struct c_can_priv *priv = netdev_priv(dev);
 
 	reg_err_counter = priv->read_reg(priv, C_CAN_ERR_CNT_REG);
-	bec->rxerr = (reg_err_counter & ERR_CNT_REC_MASK) >>
-				ERR_CNT_REC_SHIFT;
+	bec->rxerr = (reg_err_counter & ERR_CNT_REC_MASK) >> ERR_CNT_REC_SHIFT;
 	bec->txerr = reg_err_counter & ERR_CNT_TEC_MASK;
 
 	return 0;
@@ -740,8 +721,7 @@ static int c_can_get_berr_counter(const struct net_device *dev,
 	return err;
 }
 
-/*
- * theory of operation:
+/* theory of operation:
  *
  * priv->tx_echo holds the number of the oldest can_frame put for
  * transmission into the hardware, but not yet ACKed by the CAN tx
@@ -757,18 +737,17 @@ static void c_can_do_tx(struct net_device *dev)
 	u32 msg_obj_no;
 	struct c_can_priv *priv = netdev_priv(dev);
 	struct net_device_stats *stats = &dev->stats;
+	unsigned int bytes;
+	u32 idx;
 
 	for (/* nix */; (priv->tx_next - priv->tx_echo) > 0; priv->tx_echo++) {
 		msg_obj_no = get_tx_echo_msg_obj(priv);
 		val = c_can_read_reg32(priv, C_CAN_TXRQST1_REG);
+		idx = msg_obj_no - C_CAN_MSG_OBJ_TX_FIRST;
 		if (!(val & (1 << (msg_obj_no - 1)))) {
-			can_get_echo_skb(dev,
-					msg_obj_no - C_CAN_MSG_OBJ_TX_FIRST);
-			stats->tx_bytes += priv->read_reg(priv,
-					C_CAN_IFACE(MSGCTRL_REG, 0))
-					& IF_MCONT_DLC_MASK;
+			bytes = can_get_echo_skb(dev, idx, NULL);
 			stats->tx_packets++;
-			can_led_event(dev, CAN_LED_EVENT_TX);
+			stats->tx_bytes += bytes;
 			c_can_inval_msg_object(dev, 0, msg_obj_no);
 		} else {
 			break;
@@ -777,12 +756,11 @@ static void c_can_do_tx(struct net_device *dev)
 
 	/* restart queue if wrap-up or if queue stalled on last pkt */
 	if (((priv->tx_next & C_CAN_NEXT_MSG_OBJ_MASK) != 0) ||
-			((priv->tx_echo & C_CAN_NEXT_MSG_OBJ_MASK) == 0))
+	    ((priv->tx_echo & C_CAN_NEXT_MSG_OBJ_MASK) == 0))
 		netif_wake_queue(dev);
 }
 
-/*
- * theory of operation:
+/* theory of operation:
  *
  * c_can core saves a received CAN message into the first free message
  * object it finds free (starting with the lowest). Bits NEWDAT and
@@ -811,18 +789,18 @@ static int c_can_do_rx_poll(struct net_device *dev, int quota)
 	u32 val = c_can_read_reg32(priv, C_CAN_INTPND1_REG);
 
 	for (msg_obj = C_CAN_MSG_OBJ_RX_FIRST;
-			msg_obj <= C_CAN_MSG_OBJ_RX_LAST && quota > 0;
-			val = c_can_read_reg32(priv, C_CAN_INTPND1_REG),
-			msg_obj++) {
-		/*
-		 * as interrupt pending register's bit n-1 corresponds to
+	     msg_obj <= C_CAN_MSG_OBJ_RX_LAST && quota > 0;
+	     val = c_can_read_reg32(priv, C_CAN_INTPND1_REG), msg_obj++) {
+		/* as interrupt pending register's bit n-1 corresponds to
 		 * message object n, we need to handle the same properly.
 		 */
 		if (val & (1 << (msg_obj - 1))) {
-			c_can_object_get(dev, 0, msg_obj, ((IF_COMM_ALL &~IF_COMM_TXRQST) | IF_COMM_CLR_INT_PND));
+			c_can_object_get(dev, 0, msg_obj,
+					 ((IF_COMM_ALL & ~IF_COMM_TXRQST) |
+					  IF_COMM_CLR_INT_PND));
 
 			msg_ctrl_save = priv->read_reg(priv,
-					C_CAN_IFACE(MSGCTRL_REG, 0));
+				C_CAN_IFACE(MSGCTRL_REG, 0));
 
 			if (msg_ctrl_save & IF_MCONT_MSGLST) {
 				c_can_handle_lost_msg_obj(dev, 0, msg_obj);
@@ -841,16 +819,15 @@ static int c_can_do_rx_poll(struct net_device *dev, int quota)
 			c_can_read_msg_object(dev, 0, msg_ctrl_save);
 
 			if (msg_obj < C_CAN_MSG_RX_LOW_LAST)
-				c_can_mark_rx_msg_obj(dev, 0,
-						msg_ctrl_save, msg_obj);
+				c_can_mark_rx_msg_obj(dev, 0, msg_ctrl_save,
+						      msg_obj);
 			else if (msg_obj > C_CAN_MSG_RX_LOW_LAST)
 				/* activate this msg obj */
-				c_can_activate_rx_msg_obj(dev, 0,
-						msg_ctrl_save, msg_obj);
+				c_can_activate_rx_msg_obj(dev, 0, msg_ctrl_save,
+							  msg_obj);
 			else if (msg_obj == C_CAN_MSG_RX_LOW_LAST)
 				/* activate all lower message objects */
-				c_can_activate_all_lower_rx_msg_obj(dev,
-						0, msg_ctrl_save);
+				c_can_activate_all_lower_rx_msg_obj(dev, 0, msg_ctrl_save);
 
 			num_rx_pkts++;
 			quota--;
@@ -863,11 +840,11 @@ static int c_can_do_rx_poll(struct net_device *dev, int quota)
 static inline int c_can_has_and_handle_berr(struct c_can_priv *priv)
 {
 	return (priv->can.ctrlmode & CAN_CTRLMODE_BERR_REPORTING) &&
-		(priv->current_status & LEC_UNUSED);
+	       (priv->current_status & LEC_UNUSED);
 }
 
 static int c_can_handle_state_change(struct net_device *dev,
-				enum c_can_bus_error_types error_type)
+				     enum c_can_bus_error_types error_type)
 {
 	unsigned int reg_err_counter;
 	unsigned int rx_err_passive;
@@ -885,7 +862,7 @@ static int c_can_handle_state_change(struct net_device *dev,
 	__c_can_get_berr_counter(dev, &bec);
 	reg_err_counter = priv->read_reg(priv, C_CAN_ERR_CNT_REG);
 	rx_err_passive = (reg_err_counter & ERR_CNT_RP_MASK) >>
-				ERR_CNT_RP_SHIFT;
+			 ERR_CNT_RP_SHIFT;
 
 	switch (error_type) {
 	case C_CAN_ERROR_WARNING:
@@ -894,8 +871,8 @@ static int c_can_handle_state_change(struct net_device *dev,
 		priv->can.state = CAN_STATE_ERROR_WARNING;
 		cf->can_id |= CAN_ERR_CRTL;
 		cf->data[1] = (bec.txerr > bec.rxerr) ?
-			CAN_ERR_CRTL_TX_WARNING :
-			CAN_ERR_CRTL_RX_WARNING;
+				      CAN_ERR_CRTL_TX_WARNING :
+				      CAN_ERR_CRTL_RX_WARNING;
 		cf->data[6] = bec.txerr;
 		cf->data[7] = bec.rxerr;
 
@@ -917,8 +894,7 @@ static int c_can_handle_state_change(struct net_device *dev,
 		/* bus-off state */
 		priv->can.state = CAN_STATE_BUS_OFF;
 		cf->can_id |= CAN_ERR_BUSOFF;
-		/*
-		 * disable all interrupts in bus-off mode to ensure that
+		/* disable all interrupts in bus-off mode to ensure that
 		 * the CPU is not hogged down
 		 */
 		c_can_enable_all_interrupts(priv, DISABLE_ALL_INTERRUPTS);
@@ -943,8 +919,7 @@ static int c_can_handle_bus_err(struct net_device *dev,
 	struct can_frame *cf;
 	struct sk_buff *skb;
 
-	/*
-	 * early exit if no lec update or no error.
+	/* early exit if no lec update or no error.
 	 * no lec update means that no CAN bus event has been detected
 	 * since CPU wrote 0x7 value to status reg.
 	 */
@@ -956,8 +931,7 @@ static int c_can_handle_bus_err(struct net_device *dev,
 	if (unlikely(!skb))
 		return 0;
 
-	/*
-	 * check for 'last error code' which tells us the
+	/* check for 'last error code' which tells us the
 	 * type of the last error to occur on the CAN bus
 	 */
 
@@ -978,8 +952,8 @@ static int c_can_handle_bus_err(struct net_device *dev,
 		break;
 	case LEC_ACK_ERROR:
 		netdev_dbg(dev, "ack error\n");
-		cf->data[3] |= (CAN_ERR_PROT_LOC_ACK |
-				CAN_ERR_PROT_LOC_ACK_DEL);
+		cf->data[3] |=
+			(CAN_ERR_PROT_LOC_ACK | CAN_ERR_PROT_LOC_ACK_DEL);
 		break;
 	case LEC_BIT1_ERROR:
 		netdev_dbg(dev, "bit1 error\n");
@@ -991,8 +965,8 @@ static int c_can_handle_bus_err(struct net_device *dev,
 		break;
 	case LEC_CRC_ERROR:
 		netdev_dbg(dev, "CRC error\n");
-		cf->data[3] |= (CAN_ERR_PROT_LOC_CRC_SEQ |
-				CAN_ERR_PROT_LOC_CRC_DEL);
+		cf->data[3] |=
+			(CAN_ERR_PROT_LOC_CRC_SEQ | CAN_ERR_PROT_LOC_CRC_DEL);
 		break;
 	default:
 		break;
@@ -1022,8 +996,7 @@ static int c_can_poll(struct napi_struct *napi, int quota)
 
 	/* status events have the highest priority */
 	if (irqstatus == STATUS_INTERRUPT) {
-		priv->current_status = priv->read_reg(priv,
-					C_CAN_STS_REG);
+		priv->current_status = priv->read_reg(priv, C_CAN_STS_REG);
 
 		/* handle Tx/Rx events */
 		if (priv->current_status & STATUS_TXOK)
@@ -1036,32 +1009,32 @@ static int c_can_poll(struct napi_struct *napi, int quota)
 
 		/* handle state changes */
 		if ((priv->current_status & STATUS_EWARN) &&
-				(!(priv->last_status & STATUS_EWARN))) {
+		    (!(priv->last_status & STATUS_EWARN))) {
 			netdev_dbg(dev, "entered error warning state\n");
 			work_done += c_can_handle_state_change(dev,
-						C_CAN_ERROR_WARNING);
+				C_CAN_ERROR_WARNING);
 		}
 		if ((priv->current_status & STATUS_EPASS) &&
-				(!(priv->last_status & STATUS_EPASS))) {
+		    (!(priv->last_status & STATUS_EPASS))) {
 			netdev_dbg(dev, "entered error passive state\n");
 			work_done += c_can_handle_state_change(dev,
-						C_CAN_ERROR_PASSIVE);
+				C_CAN_ERROR_PASSIVE);
 		}
 		if ((priv->current_status & STATUS_BOFF) &&
-				(!(priv->last_status & STATUS_BOFF))) {
+		    (!(priv->last_status & STATUS_BOFF))) {
 			netdev_dbg(dev, "entered bus off state\n");
-			work_done += c_can_handle_state_change(dev,
-						C_CAN_BUS_OFF);
+			work_done +=
+				c_can_handle_state_change(dev, C_CAN_BUS_OFF);
 		}
 
 		/* handle bus recovery events */
 		if ((!(priv->current_status & STATUS_BOFF)) &&
-				(priv->last_status & STATUS_BOFF)) {
+		    (priv->last_status & STATUS_BOFF)) {
 			netdev_dbg(dev, "left bus off state\n");
 			priv->can.state = CAN_STATE_ERROR_ACTIVE;
 		}
 		if ((!(priv->current_status & STATUS_EPASS)) &&
-				(priv->last_status & STATUS_EPASS)) {
+		    (priv->last_status & STATUS_EPASS)) {
 			netdev_dbg(dev, "left error passive state\n");
 			priv->can.state = CAN_STATE_ERROR_ACTIVE;
 		}
@@ -1073,11 +1046,11 @@ static int c_can_poll(struct napi_struct *napi, int quota)
 		if (lec_type)
 			work_done += c_can_handle_bus_err(dev, lec_type);
 	} else if ((irqstatus >= C_CAN_MSG_OBJ_RX_FIRST) &&
-			(irqstatus <= C_CAN_MSG_OBJ_RX_LAST)) {
+		   (irqstatus <= C_CAN_MSG_OBJ_RX_LAST)) {
 		/* handle events corresponding to receive message objects */
 		work_done += c_can_do_rx_poll(dev, (quota - work_done));
 	} else if ((irqstatus >= C_CAN_MSG_OBJ_TX_FIRST) &&
-			(irqstatus <= C_CAN_MSG_OBJ_TX_LAST)) {
+		   (irqstatus <= C_CAN_MSG_OBJ_TX_LAST)) {
 		/* handle events corresponding to transmit message objects */
 		c_can_do_tx(dev);
 	}
@@ -1097,9 +1070,8 @@ static irqreturn_t c_can_isr(int irq, void *dev_id)
 	struct net_device *dev = (struct net_device *)dev_id;
 	struct c_can_priv *priv = netdev_priv(dev);
 
-	if(__raw_readl(priv->base+0x16C))
-	{
-		__raw_writel(0x0,(priv->base+0x16C));
+	if (__raw_readl(priv->base + 0x16C)) {
+		__raw_writel(0x0, (priv->base + 0x16C));
 		return IRQ_NONE;
 	}
 
@@ -1131,15 +1103,13 @@ static int c_can_open(struct net_device *dev)
 
 	/* register interrupt handler */
 	err = request_irq(dev->irq, &c_can_isr, IRQF_NO_SUSPEND, dev->name,
-				dev);
+			  dev);
 	if (err < 0) {
 		netdev_err(dev, "failed to request interrupt\n");
 		goto exit_irq_fail;
 	}
 
 	napi_enable(&priv->napi);
-
-	can_led_event(dev, CAN_LED_EVENT_OPEN);
 
 	/* start the c_can controller */
 	c_can_start(dev);
@@ -1169,8 +1139,6 @@ static int c_can_close(struct net_device *dev)
 	c_can_reset_ram(priv, false);
 	c_can_pm_runtime_put_sync(priv);
 
-	can_led_event(dev, CAN_LED_EVENT_STOP);
-
 	return 0;
 }
 
@@ -1184,15 +1152,15 @@ struct net_device *alloc_c_can_dev(void)
 		return NULL;
 
 	priv = netdev_priv(dev);
-	netif_napi_add(dev, &priv->napi, c_can_poll, C_CAN_NAPI_WEIGHT);
+	netif_napi_add(dev, &priv->napi, c_can_poll);
 
 	priv->dev = dev;
 	priv->can.bittiming_const = &c_can_bittiming_const;
 	priv->can.do_set_mode = c_can_set_mode;
 	priv->can.do_get_berr_counter = c_can_get_berr_counter;
 	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |
-					CAN_CTRLMODE_LISTENONLY |
-					CAN_CTRLMODE_BERR_REPORTING;
+				       CAN_CTRLMODE_LISTENONLY |
+				       CAN_CTRLMODE_BERR_REPORTING;
 
 	return dev;
 }
@@ -1216,7 +1184,7 @@ int c_can_power_down(struct net_device *dev)
 	/* Wait for the PDA bit to get set */
 	time_out = jiffies + msecs_to_jiffies(INIT_WAIT_MS);
 	while (!(priv->read_reg(priv, C_CAN_STS_REG) & STATUS_PDA) &&
-				time_after(time_out, jiffies))
+	       time_after(time_out, jiffies))
 		cpu_relax();
 
 	if (time_after(jiffies, time_out))
@@ -1254,7 +1222,7 @@ int c_can_power_up(struct net_device *dev)
 	/* Wait for the PDA bit to get clear */
 	time_out = jiffies + msecs_to_jiffies(INIT_WAIT_MS);
 	while ((priv->read_reg(priv, C_CAN_STS_REG) & STATUS_PDA) &&
-				time_after(time_out, jiffies))
+	       time_after(time_out, jiffies))
 		cpu_relax();
 
 	if (time_after(jiffies, time_out))
@@ -1286,14 +1254,12 @@ int register_c_can_dev(struct net_device *dev)
 
 	c_can_pm_runtime_enable(priv);
 
-	dev->flags |= IFF_ECHO;	/* we support local echo */
+	dev->flags |= IFF_ECHO; /* we support local echo */
 	dev->netdev_ops = &c_can_netdev_ops;
 
 	err = register_candev(dev);
 	if (err)
 		c_can_pm_runtime_disable(priv);
-	else
-		devm_can_led_init(dev);
 
 	return err;
 }

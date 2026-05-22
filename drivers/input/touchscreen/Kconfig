@@ -51,14 +51,6 @@ config TOUCHSCREEN_NUC980
 	  found on Nuvoton MA35D1. The ADC driver is also implement
 	  in this driver.
 
-config TOUCHSCREEN_NUC980
-	tristate "NUC980 touchscreen(ADC) support"
-	depends on ARCH_NUC980
-	help
-	  This selects support for the resistive touchscreen controller
-	  found on Nuvoton MA35D1. The ADC driver is also implement
-	  in this driver.
-
 config TOUCHSCREEN_AD7877
 	tristate "AD7877 based touchscreens"
 	depends on SPI_MASTER

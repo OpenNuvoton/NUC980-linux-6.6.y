@@ -1,16 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * arch/arm/mach-nuc980/include/mach/regs-gpio.h
+ * Nuvoton NUC990 regs-gpio.h
  *
- * Copyright (c) 2017 Nuvoton Technology Corporation
- * All rights reserved.
+ * Copyright (C) 2026 Nuvoton Technology Corp.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
+ * Author: SCHung <schung@nuvoton.com>
  */
-
+ 
 #ifndef __ASM_ARCH_REGS_GPIO_H
 #define __ASM_ARCH_REGS_GPIO_H
 

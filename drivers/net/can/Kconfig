@@ -215,6 +215,7 @@ config CAN_XILINXCAN
 	  Zynq CANPS IP.
 
 source "drivers/net/can/c_can/Kconfig"
+source "drivers/net/can/nuc980_can/Kconfig"
 source "drivers/net/can/cc770/Kconfig"
 source "drivers/net/can/ctucanfd/Kconfig"
 source "drivers/net/can/ifi_canfd/Kconfig"

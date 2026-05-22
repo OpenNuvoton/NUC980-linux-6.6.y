@@ -87,4 +87,5 @@ DT_MACHINE_START(nuc980_dt, "Nuvoton NUC980 (Device Tree)")
 	.dt_compat = nuc980_dt_board_compat,
 	.init_late = nuc980_init_late,
 	.restart = nuc980_restart,
+	.nr_irqs = AIC_NR_IRQS,
 MACHINE_END

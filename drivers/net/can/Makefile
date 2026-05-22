@@ -18,6 +18,7 @@ obj-$(CONFIG_CAN_BXCAN)		+= bxcan.o
 obj-$(CONFIG_CAN_CAN327)	+= can327.o
 obj-$(CONFIG_CAN_CC770)		+= cc770/
 obj-$(CONFIG_CAN_C_CAN)		+= c_can/
+obj-$(CONFIG_NUC980_CAN)        += nuc980_can/
 obj-$(CONFIG_CAN_CTUCANFD)	+= ctucanfd/
 obj-$(CONFIG_CAN_FLEXCAN)	+= flexcan/
 obj-$(CONFIG_CAN_GRCAN)		+= grcan.o

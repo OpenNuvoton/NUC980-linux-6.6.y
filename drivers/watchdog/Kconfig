@@ -710,30 +710,6 @@ config NUC980_WDT_WKUP
         tristate "NUC980 WDT wake-up support"
         depends on NUC980_WDT
 
-config NUC980_WDT
-	tristate "Nuvoton NUC980 Watchdog Timer"
-	depends on ARCH_NUC980
-	select WATCHDOG_CORE
-	help
-	  Say Y here if to include support for the watchdog timer
-	  for the Nuvoton NUC980 series microprosser.
-	  To compile this driver as a module, choose M here: the
-	  module will be called nuc980_wdt.
-
-config NUC980_WWDT
-	tristate "Nuvoton NUC980 Window Watchdog Timer"
-	depends on ARCH_NUC980
-	select WATCHDOG_CORE
-	help
-	  Say Y here if to include support for the window watchdog timer
-	  for the Nuvoton NUC980 series MCU.
-	  To compile this driver as a module, choose M here: the
-	  module will be called nuc980_wwdt.
-
-config NUC980_WDT_WKUP
-        tristate "NUC980 WDT wake-up support"
-        depends on NUC980_WDT
-
 config MAX63XX_WATCHDOG
 	tristate "Max63xx watchdog"
 	depends on HAS_IOMEM

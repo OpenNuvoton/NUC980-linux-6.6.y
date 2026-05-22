@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright (c) 2020 Nuvoton Technology Corp.
+ * Copyright (c) 2026 Nuvoton Technology Corp.
  */
 
 #include <linux/bitmap.h>

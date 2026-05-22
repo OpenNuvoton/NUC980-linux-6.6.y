@@ -330,7 +330,6 @@ static int nuc980_rtc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct nuc980_rtc *nuc980_rtc;
-	int wakeup_en = 0;
 
 	rtc_clk = clk_get(NULL, "rtc");
 	clk_prepare(rtc_clk);
@@ -367,8 +366,6 @@ static int nuc980_rtc_probe(struct platform_device *pdev)
 	}
 
 	rtc_reg_write(nuc980_rtc, REG_RTC_RIER, (__raw_readl(nuc980_rtc->rtc_reg + REG_RTC_RIER) | TICKINTENB));
-
-	//of_property_read_u32(pdev->dev.of_node, "wakeup-enable", &wakeup_en);
 
 	if(of_property_read_bool(pdev->dev.of_node, "wakeup-enable")) {
 		printk("\n RTC wakeup enable \n");

@@ -252,6 +252,7 @@ static int nuc980_i2s_remove(struct snd_soc_dai *dai)
 }
 
 static struct snd_soc_dai_ops nuc980_i2s_dai_ops = {
+	.probe      = nuc980_i2s_probe,
 	.trigger    = nuc980_i2s_trigger,
 	.hw_params  = nuc980_i2s_hw_params,
 	.set_fmt    = nuc980_i2s_set_fmt,
@@ -259,9 +260,7 @@ static struct snd_soc_dai_ops nuc980_i2s_dai_ops = {
 };
 
 struct snd_soc_dai_driver nuc980_i2s_dai = {
-	.name		= "i2s_pcm",
-	.probe          = nuc980_i2s_probe,
-	.remove         = nuc980_i2s_remove,
+	.name = "i2s_pcm",
 	.playback = {
 		.rates      = SNDRV_PCM_RATE_8000_48000,
 		.formats    = SNDRV_PCM_FMTBIT_S16_LE,

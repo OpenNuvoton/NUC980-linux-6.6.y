@@ -2,7 +2,7 @@
 /*
  * NUC980 normal ADC driver
  *
- * Copyright (c) 2022 Nuvoton Technology Corp.
+ * Copyright (c) 2026 Nuvoton Technology Corp.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -56,6 +56,7 @@ struct nuc980_adc {
 	const struct nuc980_adc_data *data;
 	u16			last_val;
 	const struct iio_chan_spec *last_chan;
+	struct mutex lock;
 };
 
 static void nuc980_adc_power_down(struct nuc980_adc *info)
@@ -91,17 +92,17 @@ static int nuc980_adc_read_raw(struct iio_dev *indio_dev,
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		mutex_lock(&indio_dev->mlock);
+		mutex_lock(&info->lock);
 
 		ret = nuc980_adc_conversion(info, chan);
 		if (ret) {
 			nuc980_adc_power_down(info);
-			mutex_unlock(&indio_dev->mlock);
+			mutex_unlock(&info->lock);
 			return ret;
 		}
 
 		*val = info->last_val;
-		mutex_unlock(&indio_dev->mlock);
+		mutex_unlock(&info->lock);
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
 		ret = regulator_get_voltage(info->vref);
@@ -232,7 +233,7 @@ static irqreturn_t nuc980_adc_trigger_handler(int irq, void *p)
 	int ret;
 	int i, j = 0;
 
-	mutex_lock(&i_dev->mlock);
+	mutex_lock(&info->lock);
 
 	for_each_set_bit(i, i_dev->active_scan_mask, i_dev->masklength) {
 		const struct iio_chan_spec *chan = &i_dev->channels[i];
@@ -249,7 +250,7 @@ static irqreturn_t nuc980_adc_trigger_handler(int irq, void *p)
 
 	iio_push_to_buffers_with_timestamp(i_dev, &data, iio_get_time_ns(i_dev));
 out:
-	mutex_unlock(&i_dev->mlock);
+	mutex_unlock(&info->lock);
 
 	iio_trigger_notify_done(i_dev->trig);
 

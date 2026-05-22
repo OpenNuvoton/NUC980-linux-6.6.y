@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Nuvoton Technology Corp.
+ * Copyright (c) 2026 Nuvoton Technology Corp.
  *
  * NUC980 Series PWM driver
  *
@@ -11,6 +11,7 @@
 
 #include <linux/export.h>
 #include <linux/kernel.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -21,211 +22,206 @@
 #include <linux/pwm.h>
 #include <linux/pinctrl/consumer.h>
 #include <mach/map.h>
-#include <mach/regs-pwm1.h>
+//#include <mach/regs-pwm1.h>
 #include <mach/regs-clock.h>
 
 //#define DEBUG_PWM
+
+#define REG_PWM_PPR             (0x00)
+#define REG_PWM_CSR             (0x04)
+#define REG_PWM_PCR             (0x08)
+#define REG_PWM_CNR0            (0x0C)
+#define REG_PWM_CMR0            (0x10)
+#define REG_PWM_PDR0            (0x14)
+#define REG_PWM_CNR1            (0x18)
+#define REG_PWM_CMR1            (0x1C)
+#define REG_PWM_PDR1            (0x20)
+#define REG_PWM_CNR2            (0x24)
+#define REG_PWM_CMR2            (0x28)
+#define REG_PWM_PDR2            (0x2C)
+#define REG_PWM_CNR3            (0x30)
+#define REG_PWM_CMR3            (0x34)
+#define REG_PWM_PDR3            (0x38)
+#define REG_PWM_PIER            (0x3C)
+#define REG_PWM_PIIR            (0x40)
+
+#define NUC980_PWM_MAX_COUNT           0xFFFF
+#define NUC980_PWM_TOTAL_CHANNELS      4
 
 struct nuc980_chip {
 	struct platform_device	*pdev;
 	struct clk		*clk;
 	struct pwm_chip		 chip;
+	void __iomem		*regs;
+	spinlock_t		lock;
+	u64			clkrate;
 };
 
 #define to_nuc980_chip(chip)	container_of(chip, struct nuc980_chip, chip)
 
 #ifdef DEBUG_PWM
-static void pwm_dbg(void)
+static void pwm_dbg(struct pwm_chip *chip)
 {
+	struct nuc980_chip *nuc980 = to_nuc980_chip(chip);
 
-	printk("%08x\n", __raw_readl(REG_PWM_PPR));
-	printk("%08x\n", __raw_readl(REG_PWM_CSR));
-	printk("%08x\n", __raw_readl(REG_PWM_PCR));
-	printk("%08x\n", __raw_readl(REG_PWM_CNR0));
-	printk("%08x\n", __raw_readl(REG_PWM_CMR0));
-	printk("%08x\n", __raw_readl(REG_PWM_CNR1));
-	printk("%08x\n", __raw_readl(REG_PWM_CMR1));
-	printk("%08x\n", __raw_readl(REG_PWM_CNR2));
-	printk("%08x\n", __raw_readl(REG_PWM_CMR2));
-	printk("%08x\n", __raw_readl(REG_PWM_CNR3));
-	printk("%08x\n", __raw_readl(REG_PWM_CMR3));
-	printk("%08x\n", __raw_readl(REG_PWM_PIER));
-	printk("%08x\n", __raw_readl(REG_PWM_PIIR));
+	printk("PPR: 0x%08x\n", readl(nuc980->regs + REG_PWM_PPR));
+	printk("CSR: 0x%08x\n", readl(nuc980->regs + REG_PWM_CSR));
+	printk("PCR: 0x%08x\n", readl(nuc980->regs + REG_PWM_PCR));
+	printk("CNR0:0x%08x\n", readl(nuc980->regs + REG_PWM_CNR0));
+	printk("CMR0:0x%08x\n", readl(nuc980->regs + REG_PWM_CMR0));
+	printk("CNR1:0x%08x\n", readl(nuc980->regs + REG_PWM_CNR1));
+	printk("CMR1:0x%08x\n", readl(nuc980->regs + REG_PWM_CMR1));
+	printk("CNR2:0x%08x\n", readl(nuc980->regs + REG_PWM_CNR2));
+	printk("CMR2:0x%08x\n", readl(nuc980->regs + REG_PWM_CMR2));
+	printk("CNR3:0x%08x\n", readl(nuc980->regs + REG_PWM_CNR3));
+	printk("CMR3:0x%08x\n", readl(nuc980->regs + REG_PWM_CMR3));
+	printk("PIER:0x%08x\n", readl(nuc980->regs + REG_PWM_PIER));
+	printk("PIIR:0x%08x\n", readl(nuc980->regs + REG_PWM_PIIR));
 
 }
 #endif
 
-static int nuc980_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	//struct nuc980_chip *nuc980 = to_nuc980_chip(chip);
-	int ch = pwm->hwpwm;
-	unsigned long flags, cnr, cmr;
-
-#ifdef DEBUG_PWM
-	printk("Enter %s ....ch[%d]\n",__FUNCTION__,pwm->hwpwm);
-#endif
-
-	local_irq_save(flags);
-
-	if(ch == 0) {
-		cnr = __raw_readl(REG_PWM_CNR0);
-		cmr = __raw_readl(REG_PWM_CMR0);
-		__raw_writel(__raw_readl(REG_PWM_PCR) | (9), REG_PWM_PCR);
-		__raw_writel(cnr, REG_PWM_CNR0);
-		__raw_writel(cmr, REG_PWM_CMR0);
-	} else if(ch == 1) {
-		cnr = __raw_readl(REG_PWM_CNR1);
-		cmr = __raw_readl(REG_PWM_CMR1);
-		__raw_writel(__raw_readl(REG_PWM_PCR) | (9 << 8), REG_PWM_PCR);
-		__raw_writel(cnr, REG_PWM_CNR1);
-		__raw_writel(cmr, REG_PWM_CMR1);
-	} else if (ch == 2) {
-		cnr = __raw_readl(REG_PWM_CNR2);
-		cmr = __raw_readl(REG_PWM_CMR2);
-		__raw_writel(__raw_readl(REG_PWM_PCR) | (9 << 12), REG_PWM_PCR);
-		__raw_writel(cnr, REG_PWM_CNR2);
-		__raw_writel(cmr, REG_PWM_CMR2);
-	} else {	/* ch 3 */
-		cnr = __raw_readl(REG_PWM_CNR3);
-		cmr = __raw_readl(REG_PWM_CMR3);
-		__raw_writel(__raw_readl(REG_PWM_PCR) | (9 << 16), REG_PWM_PCR);
-		__raw_writel(cnr, REG_PWM_CNR3);
-		__raw_writel(cmr, REG_PWM_CMR3);
-	}
-
-	local_irq_restore(flags);
-#ifdef DEBUG_PWM
-	pwm_dbg();
-#endif
-	return 0;
-}
-
-static void nuc980_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
-{
-	//struct nuc980_chip *nuc980 = to_nuc980_chip(chip);
-	int ch = pwm->hwpwm;
-	unsigned long flags;
-
-#ifdef DEBUG_PWM
-	printk("Enter %s ....ch[%d]\n",__FUNCTION__,pwm->hwpwm);
-#endif
-
-	local_irq_save(flags);
-	if(ch == 0)
-		__raw_writel(__raw_readl(REG_PWM_PCR) & ~(1), REG_PWM_PCR);
-	else if(ch == 1)
-		__raw_writel(__raw_readl(REG_PWM_PCR) & ~(1 << 8), REG_PWM_PCR);
-	else if (ch == 2)
-		__raw_writel(__raw_readl(REG_PWM_PCR) & ~(1 << 12), REG_PWM_PCR);
-	else	/* ch 3 */
-		__raw_writel(__raw_readl(REG_PWM_PCR) & ~(1 << 16), REG_PWM_PCR);
-
-	local_irq_restore(flags);
-#ifdef DEBUG_PWM
-	pwm_dbg();
-#endif
-}
-
-static int nuc980_pwm_set_polarity(struct pwm_chip *chip, struct pwm_device *pwm, enum pwm_polarity polarity)
-{
-	//struct nuc980_chip *nuc980 = to_nuc980_chip(chip);
-	int ch = pwm->hwpwm;
-	unsigned long flags;
-
-#ifdef DEBUG_PWM
-	printk("Enter %s ....ch[%d]\n",__FUNCTION__,pwm->hwpwm);
-#endif
-
-	local_irq_save(flags);
-
-	if(ch == 0) {
-		if (polarity == PWM_POLARITY_NORMAL)
-			__raw_writel(__raw_readl(REG_PWM_PCR) & ~(4), REG_PWM_PCR);
-		else
-			__raw_writel(__raw_readl(REG_PWM_PCR) | (4), REG_PWM_PCR);
-	} else if(ch == 1) {
-		if (polarity == PWM_POLARITY_NORMAL)
-			__raw_writel(__raw_readl(REG_PWM_PCR) & ~(4 << 8), REG_PWM_PCR);
-		else
-			__raw_writel(__raw_readl(REG_PWM_PCR) | (4 << 8), REG_PWM_PCR);
-	} else if (ch == 2) {
-		if (polarity == PWM_POLARITY_NORMAL)
-			__raw_writel(__raw_readl(REG_PWM_PCR) & ~(4 << 12), REG_PWM_PCR);
-		else
-			__raw_writel(__raw_readl(REG_PWM_PCR) | (4 << 12), REG_PWM_PCR);
-	} else {	/* ch 3 */
-		if (polarity == PWM_POLARITY_NORMAL)
-			__raw_writel(__raw_readl(REG_PWM_PCR) & ~(4 << 16), REG_PWM_PCR);
-		else
-			__raw_writel(__raw_readl(REG_PWM_PCR) | (4 << 16), REG_PWM_PCR);
-	}
-
-	local_irq_restore(flags);
-#ifdef DEBUG_PWM
-	pwm_dbg();
-#endif
-	return 0;
-}
-
-
-static int nuc980_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
-                             int duty_ns, int period_ns)
+static int nuvoton_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
+                             const struct pwm_state *state)
 {
 	struct nuc980_chip *nuc980 = to_nuc980_chip(chip);
 	unsigned long period, duty, prescale;
-	unsigned long flags;
 	int ch = pwm->hwpwm;
+
+#ifdef DEBUG_PWM
+	printk("Enter %s ....ch[%d]\n",__FUNCTION__, pwm->hwpwm);
+#endif
+
+	if (state->enabled) {
+
+		// Get PCLK, calculate valid parameter range.
+		prescale = clk_get_rate(nuc980->clk) / 1000000 - 1;
+
+		// now pwm time unit is 1000ns.
+		//period = (state->period + 500) / 1000;
+		period = (unsigned long)div_u64(state->period + 500, 1000);
+		//duty = (state->duty_cycle + 500) / 1000;
+		duty = (unsigned long)div_u64(state->duty_cycle + 500, 1000);
+
+		// don't want the minus 1 below change the value to -1 (0xFFFF)
+		if (period == 0)
+			period = 1;
+		if (duty == 0)
+			duty = 1;
+
+		// Set prescale for all pwm channels
+		writel(prescale | (prescale << 8), nuc980->regs + REG_PWM_PPR);
+
+		if(ch == 0) {
+			writel(readl(nuc980->regs + REG_PWM_PCR) | (9), nuc980->regs + REG_PWM_PCR);
+			writel(period - 1, nuc980->regs + REG_PWM_CNR0);
+			writel(duty - 1, nuc980->regs + REG_PWM_CMR0);
+			if (state->polarity == PWM_POLARITY_NORMAL)
+				writel(readl(nuc980->regs + REG_PWM_PCR) & ~(4), nuc980->regs + REG_PWM_PCR);
+			else
+				writel(readl(nuc980->regs + REG_PWM_PCR) | (4), nuc980->regs + REG_PWM_PCR);
+		} else if(ch == 1) {
+			writel(readl(nuc980->regs + REG_PWM_PCR) | (9 << 8), nuc980->regs + REG_PWM_PCR);
+			writel(period - 1, nuc980->regs + REG_PWM_CNR1);
+			writel(duty - 1, nuc980->regs + REG_PWM_CMR1);
+			if (state->polarity == PWM_POLARITY_NORMAL)
+				writel(readl(nuc980->regs + REG_PWM_PCR) & ~(4 << 8), nuc980->regs + REG_PWM_PCR);
+			else
+				writel(readl(nuc980->regs + REG_PWM_PCR) | (4 << 8), nuc980->regs + REG_PWM_PCR);
+		} else if (ch == 2) {
+			writel(readl(nuc980->regs + REG_PWM_PCR) | (9 << 12), nuc980->regs + REG_PWM_PCR);
+			writel(period - 1, nuc980->regs + REG_PWM_CNR2);
+			writel(duty - 1, nuc980->regs + REG_PWM_CMR2);
+			if (state->polarity == PWM_POLARITY_NORMAL)
+				writel(readl(nuc980->regs + REG_PWM_PCR) & ~(4 << 12), nuc980->regs + REG_PWM_PCR);
+			else
+				writel(readl(nuc980->regs + REG_PWM_PCR) | (4 << 12), nuc980->regs + REG_PWM_PCR);
+		} else {/* ch 3 */
+			writel(readl(nuc980->regs + REG_PWM_PCR) | (9 << 16), nuc980->regs + REG_PWM_PCR);
+			writel(period - 1, nuc980->regs + REG_PWM_CNR3);
+			writel(duty - 1, nuc980->regs + REG_PWM_CMR3);
+			if (state->polarity == PWM_POLARITY_NORMAL)
+				writel(readl(nuc980->regs + REG_PWM_PCR) & ~(4 << 16), nuc980->regs + REG_PWM_PCR);
+			else
+				writel(readl(nuc980->regs + REG_PWM_PCR) | (4 << 16), nuc980->regs + REG_PWM_PCR);
+		}
+	} else {
+		if (ch == 0)
+			writel(readl(nuc980->regs + REG_PWM_PCR) & ~(1), nuc980->regs + REG_PWM_PCR);
+		else if (ch == 1)
+			writel(readl(nuc980->regs + REG_PWM_PCR) & ~(1 << 8), nuc980->regs + REG_PWM_PCR);
+		else if (ch == 2)
+			writel(readl(nuc980->regs + REG_PWM_PCR) & ~(1 << 12), nuc980->regs + REG_PWM_PCR);
+		else    /* ch 3 */
+			writel(readl(nuc980->regs + REG_PWM_PCR) & ~(1 << 16), nuc980->regs + REG_PWM_PCR);
+
+	}
+
+#ifdef DEBUG_PWM
+	pwm_dbg(chip);
+#endif
+
+	return 0;
+}
+
+static int nuvoton_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
+                                 struct pwm_state *state)
+{
+	struct nuc980_chip *nuc980 = to_nuc980_chip(chip);
+	u32 duty_cycles, period_cycles, cnten, outen, polarity, prescale;
+	u32 ch = pwm->hwpwm;
 
 #ifdef DEBUG_PWM
 	printk("Enter %s ....ch[%d]\n",__FUNCTION__,pwm->hwpwm);
 #endif
 
-	// Get PCLK, calculate valid parameter range.
-	prescale = clk_get_rate(nuc980->clk) / 1000000 - 1;
 
-	// now pwm time unit is 1000ns.
-	period = (period_ns + 500) / 1000;
-	duty = (duty_ns + 500) / 1000;
-
-	// don't want the minus 1 below change the value to -1 (0xFFFF)
-	if(period == 0)
-		period = 1;
-	if(duty == 0)
-		duty = 1;
-
-	local_irq_save(flags);
-	// Set prescale for all pwm channels
-	__raw_writel(prescale | (prescale << 8), REG_PWM_PPR);
-
-	if(ch == 0) {
-		__raw_writel(period - 1, REG_PWM_CNR0);
-		__raw_writel(duty - 1, REG_PWM_CMR0);
-	} else if(ch == 1) {
-		__raw_writel(period - 1, REG_PWM_CNR1);
-		__raw_writel(duty - 1, REG_PWM_CMR1);
+	if (ch == 0) {
+		cnten = readl(nuc980->regs + REG_PWM_PCR) & 1;
+		outen = readl(nuc980->regs + REG_PWM_PCR) & 1;
+		duty_cycles = readl(nuc980->regs + REG_PWM_CMR0);
+		period_cycles = readl(nuc980->regs + REG_PWM_CNR0);
+		polarity = (readl(nuc980->regs + REG_PWM_PCR) >> 2) & 1;
+	} else if (ch == 1) {
+		cnten = (readl(nuc980->regs + REG_PWM_PCR) & 0x100) >> 8;
+		outen = (readl(nuc980->regs + REG_PWM_PCR) & 0x100) >> 8;
+		duty_cycles = readl(nuc980->regs + REG_PWM_CMR1);
+		period_cycles = readl(nuc980->regs + REG_PWM_CNR1);
+		polarity = (readl(nuc980->regs + REG_PWM_PCR) >> 10) & 1;
 	} else if (ch == 2) {
-		__raw_writel(period - 1, REG_PWM_CNR2);
-		__raw_writel(duty - 1, REG_PWM_CMR2);
-	} else {/* ch 3 */
-		__raw_writel(period - 1, REG_PWM_CNR3);
-		__raw_writel(duty - 1, REG_PWM_CMR3);
+		cnten = (readl(nuc980->regs + REG_PWM_PCR) & 0x100) >> 12;
+		outen = (readl(nuc980->regs + REG_PWM_PCR) & 0x100) >> 12;
+		duty_cycles = readl(nuc980->regs + REG_PWM_CMR2);
+		period_cycles = readl(nuc980->regs + REG_PWM_CNR2);
+		polarity = (readl(nuc980->regs + REG_PWM_PCR) >> 14) & 1;
+	} else if (ch == 3) {
+		cnten = (readl(nuc980->regs + REG_PWM_PCR) & 0x100) >> 16;
+		outen = (readl(nuc980->regs + REG_PWM_PCR) & 0x100) >> 16;
+		duty_cycles = readl(nuc980->regs + REG_PWM_CMR3);
+		period_cycles = readl(nuc980->regs + REG_PWM_CNR3);
+		polarity = (readl(nuc980->regs + REG_PWM_PCR) >> 18) & 1;
 	}
 
-	local_irq_restore(flags);
+	if ((ch == 0) || (ch == 1))
+		prescale = (readl(nuc980->regs + REG_PWM_PPR) & 0xFF) + 1;
+	else
+		prescale = ((readl(nuc980->regs + REG_PWM_PPR) & 0xFF00) >> 8) + 1;
+
+	state->enabled = cnten;
+	state->polarity = polarity ? PWM_POLARITY_INVERSED : PWM_POLARITY_NORMAL;
+	state->duty_cycle = DIV64_U64_ROUND_UP((u64)duty_cycles * NSEC_PER_SEC, nuc980->clkrate);
+	state->period = DIV64_U64_ROUND_UP((u64)period_cycles * NSEC_PER_SEC, nuc980->clkrate);
 
 #ifdef DEBUG_PWM
-	pwm_dbg();
+	pwm_dbg(chip);
 #endif
 
 	return 0;
 }
 
 static struct pwm_ops nuc980_pwm_ops = {
-	.enable = nuc980_pwm_enable,
-	.disable = nuc980_pwm_disable,
-	.config = nuc980_pwm_config,
-	.set_polarity = nuc980_pwm_set_polarity,
-	.owner = THIS_MODULE,
+	.apply = nuvoton_pwm_apply,
+	.get_state = nuvoton_pwm_get_state,
 };
 
 static int nuc980_pwm_probe(struct platform_device *pdev)
@@ -233,6 +229,7 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 
 	struct nuc980_chip *nuc980;
 	struct pinctrl *p;
+	struct resource *r;
 	int ret;
 #if defined(CONFIG_USE_OF)
 	u32 id;
@@ -243,12 +240,29 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to allocate memory for pwm_device\n");
 		return -ENOMEM;
 	}
+
 	/* calculate base of control bits in TCON */
 
 	nuc980->chip.dev = &pdev->dev;
 	nuc980->chip.ops = &nuc980_pwm_ops;
-	nuc980->chip.base = pdev->id;
 	nuc980->chip.npwm = 4;
+
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	nuc980->regs = devm_ioremap_resource(&pdev->dev, r);
+	if (IS_ERR(nuc980->regs))
+		return PTR_ERR(nuc980->regs);
+
+	/*
+	nuc980->clk = of_clk_get(pdev->dev.of_node, 0);
+	if (IS_ERR(nuc980->clk)) {
+		dev_err(&pdev->dev, "failed to get epwm clock\n");
+		ret = PTR_ERR(nuc980->clk);
+		return -ENOENT;
+	}
+	err = clk_prepare_enable(nuc980->clk);
+	if (err)
+		return -ENOENT;
+		*/
 
 	nuc980->clk = clk_get(NULL, "pwm1");
 	if (IS_ERR(nuc980->clk)) {
@@ -259,8 +273,11 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 
 	clk_prepare(nuc980->clk);
 	clk_enable(nuc980->clk);
+
+	nuc980->clkrate = clk_get_rate(nuc980->clk);
+
 	// all channel prescale output div by 1
-	__raw_writel(0x4444, REG_PWM_CSR);
+	writel(0x4444, nuc980->regs + REG_PWM_CSR);
 
 #if defined(CONFIG_USE_OF)
 	if (of_property_read_u32(pdev->dev.of_node, "id", &id)) {
@@ -270,7 +287,7 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 	}
 #endif
 
-	if(pdev->id == 4) {
+	if(pdev->id == 0) {
 #if defined(CONFIG_USE_OF)
 		p = devm_pinctrl_get_select_default(&pdev->dev);
 #else
@@ -292,7 +309,7 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 #endif
 #endif
 	}
-	if(pdev->id == 5) {
+	if(pdev->id == 1) {
 #if defined(CONFIG_USE_OF)
 		p = devm_pinctrl_get_select_default(&pdev->dev);
 #else
@@ -313,7 +330,7 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 #endif
 #endif
 	}
-	if(pdev->id == 6) {
+	if(pdev->id == 2) {
 #if defined(CONFIG_USE_OF)
 		p = devm_pinctrl_get_select_default(&pdev->dev);
 #else
@@ -334,7 +351,7 @@ static int nuc980_pwm_probe(struct platform_device *pdev)
 #endif
 #endif
 	}
-	if(pdev->id == 7) {
+	if(pdev->id == 3) {
 #if defined(CONFIG_USE_OF)
 		p = devm_pinctrl_get_select_default(&pdev->dev);
 #else
@@ -371,76 +388,9 @@ err:
 	return ret;
 }
 
-static int nuc980_pwm_remove(struct platform_device *pdev)
-{
-	struct nuc980_chip *nuc980 = platform_get_drvdata(pdev);
-
-	clk_disable(nuc980->clk);
-	return pwmchip_remove(&nuc980->chip);
-}
-
-#ifdef CONFIG_PM
-static u32 pcr_save, cnr0_save, cnr1_save, cnr2_save, cnr3_save;
-static int nuc980_pwm_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	//struct nuc980_chip *chip = dev_get_drvdata(dev);
-
-	if (pdev->id == 7) {
-		pcr_save = __raw_readl(REG_PWM_PCR);
-
-		cnr3_save = __raw_readl(REG_PWM_CNR3);
-		__raw_writel(0, REG_PWM_CNR3);
-		while(__raw_readl(REG_PWM_PDR3));
-	} else if (pdev->id == 6) {
-		cnr2_save = __raw_readl(REG_PWM_CNR2);
-		__raw_writel(0, REG_PWM_CNR2);
-		while(__raw_readl(REG_PWM_PDR2));
-	} else if (pdev->id == 5) {
-		cnr1_save = __raw_readl(REG_PWM_CNR1);
-		__raw_writel(0, REG_PWM_CNR1);
-		while(__raw_readl(REG_PWM_PDR1));
-	}
-	if (pdev->id == 4) {
-		cnr0_save = __raw_readl(REG_PWM_CNR0);
-		__raw_writel(0, REG_PWM_CNR0);
-		while(__raw_readl(REG_PWM_PDR0));
-
-		__raw_writel( __raw_readl(REG_PWM_PCR) & ~0x11101, REG_PWM_PCR);
-	}
-
-
-	return 0;
-}
-
-static int nuc980_pwm_resume(struct platform_device *pdev)
-{
-	//struct nuc980_chip *chip = dev_get_drvdata(dev);
-
-	if (pdev->id == 4) {
-		__raw_writel(cnr0_save, REG_PWM_CNR0);
-	} else if (pdev->id == 5) {
-		__raw_writel(cnr1_save, REG_PWM_CNR1);
-	} else if (pdev->id == 6) {
-		__raw_writel(cnr2_save, REG_PWM_CNR2);
-	} else if (pdev->id == 7) {
-		__raw_writel(cnr3_save, REG_PWM_CNR3);
-
-		__raw_writel(pcr_save, REG_PWM_PCR);
-	}
-
-	return 0;
-}
-
-//static SIMPLE_DEV_PM_OPS(nuc980_pwm_pm_ops, nuc980_pwm_suspend, nuc980_pwm_resume);
-#else
-#define nuc980_pwm_suspend NULL
-#define nuc980_pwm_resume  NULL
-#endif
-
-
 #if defined(CONFIG_USE_OF)
 static const struct of_device_id nuc980_pwm1_of_match[] = {
-	{   .compatible = "nuvoton,nuc980-pwm1" } ,
+	{   .compatible = "nuvoton,nuc980-pwm1" },
 	{	},
 };
 MODULE_DEVICE_TABLE(of, nuc980_pwm1_of_match);
@@ -458,15 +408,10 @@ static struct platform_driver nuc980_pwm1_driver = {
 //#endif
 	},
 	.probe		= nuc980_pwm_probe,
-	.remove		= nuc980_pwm_remove,
-	.suspend        = nuc980_pwm_suspend,
-	.resume         = nuc980_pwm_resume,
 };
-
-
 
 module_platform_driver(nuc980_pwm1_driver);
 
+MODULE_AUTHOR("Chi-Wen Weng <cwweng@nuvoton.com>");
+MODULE_DESCRIPTION("Nuvoton NUC980 PWM1 driver");
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Nuvoton Technology Corp.");
-MODULE_ALIAS("platform:nuc980-pwm1");

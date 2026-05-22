@@ -1,17 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * arch/arm/mach-nuc980/include/mach/irqs.h
+ * Nuvoton NUC990 irq head file
  *
- * Copyright (c) 2017 Nuvoton technology corporation
+ * Copyright (C) 2026 Nuvoton Technology Corp.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
+ * Author: SCHung <schung@nuvoton.com>
  */
 
 #ifndef __ASM_ARCH_IRQS_H
@@ -98,27 +91,28 @@
 #define NR_IRQS		(IRQ_GPG + SPARE_IRQS + 1)
 
 #else
-#define EXT0_BASE 64
-#define IRQ_EXT0_A0           NUC980_IRQ(EXT0_BASE + 0)
-#define IRQ_EXT1_A1           NUC980_IRQ(EXT0_BASE + 1)
-#define IRQ_EXT2_D0           NUC980_IRQ(EXT0_BASE + 2)
-#define IRQ_EXT3_D1           NUC980_IRQ(EXT0_BASE + 3)
 
-#define IRQ_EXT0_A13          NUC980_IRQ(EXT0_BASE + 4)
-#define IRQ_EXT1_A14          NUC980_IRQ(EXT0_BASE + 5)
-#define IRQ_EXT2_E10          NUC980_IRQ(EXT0_BASE + 6)
-#define IRQ_EXT3_E12          NUC980_IRQ(EXT0_BASE + 7)
-
-#define IRQ_EXT2_B3           NUC980_IRQ(EXT0_BASE + 8)
-#define IRQ_EXT2_B13          NUC980_IRQ(EXT0_BASE + 9)
-#define IRQ_EXT3_G15          NUC980_IRQ(EXT0_BASE +10)
+enum nuc980_ext_child_hwirq {
+	IRQ_EXT0_A0 = 0,
+	IRQ_EXT0_A13,
+	IRQ_EXT1_A1,
+	IRQ_EXT1_A14,
+	IRQ_EXT2_D0,
+	IRQ_EXT2_E10,
+	IRQ_EXT2_B3,
+	IRQ_EXT2_B13,
+	IRQ_EXT3_D1,
+	IRQ_EXT3_E12,
+	IRQ_EXT3_G15,
+	IRQ_EXT_NUM,
+};
 
 #define IRQ_GPIO_START	NUC980_IRQ(NUC980_IRQ(0x100))
 #define IRQ_GPIO_END		NUC980_IRQ(NUC980_IRQ(0x100 + 0xE0))
 
 #define SPARE_IRQS		(64)
 
-#define AIC_NR_IRQS			SPARE_IRQS//(IRQ_GPIO_END + SPARE_IRQS +1)
+#define AIC_NR_IRQS			(IRQ_GPIO_END + SPARE_IRQS +1)
 
 #endif
 

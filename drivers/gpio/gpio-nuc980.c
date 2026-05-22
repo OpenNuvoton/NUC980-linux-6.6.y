@@ -1,23 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- *  linux/drivers/drivers/gpio/nuc980-gpio.c - Nuvoton NUC980 GPIO Driver
+ * Nuvoton NUC980 GPIO driver
  *
- *  Copyright (c) 2018 Nuvoton Technology Corp.
+ * Copyright (C) 2026 Nuvoton Technology Corp.
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License 2 as published
- *  by the Free Software Foundation.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; see the file COPYING.  If not,     write to
- *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.  /gpio-tc3589x.c/
+ * Author: SCHung <schung@nuvoton.com>
  */
-
-
 
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -60,6 +48,8 @@
 static DEFINE_SPINLOCK(gpio_lock);
 
 static unsigned short gpio_ba;
+extern int ext_base;
+extern int gpio_base;
 
 struct gpio_port {
 	volatile unsigned int * dir;
@@ -197,8 +187,10 @@ static void nuc980_gpio_core_to_free(struct gpio_chip *chip, unsigned int offset
 
 static int nuc980_gpio_core_to_irq(struct gpio_chip *chip, unsigned int offset)
 {
-	unsigned int irqno= IRQ_GPIO_START+offset;
+	unsigned int irqno= gpio_base+offset;
+
 	ENTRY();
+
 	switch(offset) {
 	case NUC980_PA0:
 		if((__raw_readl(REG_MFP_GPA_L) & (0xf<<0))==(0x5<<0))
@@ -246,7 +238,8 @@ static int nuc980_gpio_core_to_irq(struct gpio_chip *chip, unsigned int offset)
 			irqno = IRQ_EXT3_G15;
 		break;
 	default:
-		irqno = IRQ_GPIO_START+offset;
+//		irqno = IRQ_GPIO_START+offset;
+		irqno = gpio_base+offset;
 		break;
 	}
 	LEAVE();
@@ -263,7 +256,7 @@ static struct gpio_chip nuc980_gpio = {
 	.request = nuc980_gpio_core_to_request,
 	.free = nuc980_gpio_core_to_free,
 	.to_irq = nuc980_gpio_core_to_irq,
-	.base = -1,
+	.base = 0,
 	.ngpio = NUMGPIO,
 
 };
@@ -378,6 +371,7 @@ static int nuc980_enable_eint(uint32_t flag,struct platform_device *pdev)
 	int err;
 	struct nuc980_eint_pins *peint;
 	struct pinctrl *p = NULL;
+
 	switch(pdev->id) {
 	case 1:
 		peint=eint0;
@@ -539,7 +533,7 @@ static int nuc980_enable_eint(uint32_t flag,struct platform_device *pdev)
 			__raw_writel((1<<4) | __raw_readl(REG_WKUPSER0),REG_WKUPSER0);
 			enable_irq_wake(irqnum);
 		}
-		if ((err = request_irq(irqnum,nuc980_eint0_interrupt,irqflag, "eint0", 0)) != 0) {
+		if ((err = request_irq(irqnum+ext_base,nuc980_eint0_interrupt,irqflag, "eint0", 0)) != 0) {
 			printk("%s - eint0 can not get irq!\n", __func__);
 			return -EINVAL;
 		}
@@ -557,7 +551,7 @@ static int nuc980_enable_eint(uint32_t flag,struct platform_device *pdev)
 			__raw_writel((1<<5) | __raw_readl(REG_WKUPSER0),REG_WKUPSER0);
 			enable_irq_wake(irqnum);
 		}
-		if ((err = request_irq(irqnum,nuc980_eint1_interrupt,irqflag, "eint1", 0)) != 0) {
+		if ((err = request_irq(irqnum+ext_base,nuc980_eint1_interrupt,irqflag, "eint1", 0)) != 0) {
 			printk("%s - eint1 can not get irq!\n", __func__);
 			return -EINVAL;
 		}
@@ -574,7 +568,6 @@ static int nuc980_enable_eint(uint32_t flag,struct platform_device *pdev)
 		else if(val32[1]==1)
 			irqnum = IRQ_EXT2_E10;
 		else if(val32[1]==2) {
-			printk("======================>IRQ_EXT2_B3\n");
 			irqnum = IRQ_EXT2_B3;
 		} else
 			irqnum = IRQ_EXT2_B13;
@@ -583,7 +576,7 @@ static int nuc980_enable_eint(uint32_t flag,struct platform_device *pdev)
 			__raw_writel((1<<6) | __raw_readl(REG_WKUPSER0),REG_WKUPSER0);
 			enable_irq_wake(irqnum);
 		}
-		if ((err = request_irq(irqnum,nuc980_eint2_interrupt,irqflag, "eint2", 0)) != 0) {
+		if ((err = request_irq(irqnum+ext_base,nuc980_eint2_interrupt,irqflag, "eint2", 0)) != 0) {
 			printk("%s - eint2 can not get irq!\n", __func__);
 			return -EINVAL;
 		}
@@ -607,7 +600,7 @@ static int nuc980_enable_eint(uint32_t flag,struct platform_device *pdev)
 			__raw_writel((1<<7) | __raw_readl(REG_WKUPSER0),REG_WKUPSER0);
 			enable_irq_wake(irqnum);
 		}
-		if ((err = request_irq(irqnum,nuc980_eint3_interrupt,irqflag, "eint3", 0)) != 0) {
+		if ((err = request_irq(irqnum+ext_base,nuc980_eint3_interrupt,irqflag, "eint3", 0)) != 0) {
 			printk("%s - eint3 can not get irq!\n", __func__);
 			return -EINVAL;
 		}
@@ -619,7 +612,6 @@ static int nuc980_gpio_of_xlate(struct gpio_chip *gc,
                              const struct of_phandle_args *gpiospec,
                              u32 *flags)
 {
-
         if (gpiospec->args[0] > IRQ_GPIO_END)
                 return -EINVAL;
 
@@ -631,12 +623,11 @@ static int nuc980_gpio_of_xlate(struct gpio_chip *gc,
 
 #endif
 
+#include <linux/irqdomain.h>
+#include <linux/gpio/driver.h>
+extern struct irq_chip nuc980_irq_gpio;
 static int nuc980_gpio_probe(struct platform_device *pdev)
 {
-#if 1
-	printk("%s - pdev = %s\n", __func__, pdev->name);
-	return 0;
-#else
 	int err;
 	struct clk *clk;
 #ifndef CONFIG_USE_OF
@@ -656,8 +647,7 @@ static int nuc980_gpio_probe(struct platform_device *pdev)
 		clk_prepare(clk);
 		clk_enable(clk);
 #ifdef CONFIG_USE_OF
-		irq_domain_add_legacy(np, IRQ_GPIO_END-IRQ_GPIO_START, IRQ_GPIO_START, 0,&irq_domain_simple_ops, NULL);
-//		nuc980_gpio.of_node = pdev->dev.of_node;
+		irq_domain_add_legacy(np, 0xE0, 0, 0,&irq_domain_simple_ops, NULL);
 		nuc980_gpio.of_xlate = nuc980_gpio_of_xlate;
 		nuc980_gpio.fwnode = of_fwnode_handle(pdev->dev.of_node);
 		nuc980_gpio.of_gpio_n_cells = 2;
@@ -689,7 +679,6 @@ static int nuc980_gpio_probe(struct platform_device *pdev)
 err_nuc980_gpio_port:
 	gpio_ba = 0;
 	return err;
-#endif
 }
 
 static int nuc980_gpio_remove(struct platform_device *pdev)
@@ -749,5 +738,6 @@ static struct platform_driver nuc980_gpio_driver = {
 module_platform_driver(nuc980_gpio_driver);
 
 MODULE_DESCRIPTION("GPIO interface for Nuvoton NUC980 GPIO Drive");
+MODULE_AUTHOR("SCHung");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:nuc980_gpio");
