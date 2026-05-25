@@ -1,18 +1,212 @@
-Linux kernel
-============
+Linux 6.6.y for Nuvoton NUC980
+==============================
 
-There are several guides for kernel developers and users. These guides can
-be rendered in a number of formats, like HTML and PDF. Please read
-Documentation/admin-guide/README.rst first.
+This tree is a Linux 6.6.y LTS port for the Nuvoton NUC980 ARM9 SoC family.
+It keeps the upstream Linux kernel layout and adds NUC980 platform support,
+device trees, defconfigs, and peripheral drivers used by NUC980 boards.
 
-In order to build the documentation, use ``make htmldocs`` or
-``make pdfdocs``.  The formatted documentation can also be read online at:
+The base kernel version in this tree is:
 
+    6.6.93
+
+For general Linux kernel documentation, see:
+
+    Documentation/admin-guide/README.rst
+    Documentation/process/changes.rst
     https://www.kernel.org/doc/html/latest/
 
-There are various text files in the Documentation/ subdirectory,
-several of them using the Restructured Text markup notation.
 
-Please read the Documentation/process/changes.rst file, as it contains the
-requirements for building and running the kernel, and information about
-the problems which may result by upgrading your kernel.
+Supported platform
+==================
+
+SoC:
+
+    Nuvoton NUC980 series, ARM926EJ-S / ARMv5
+
+Architecture support:
+
+    arch/arm/mach-nuc980/
+
+Main platform Kconfig symbol:
+
+    CONFIG_ARCH_NUC980
+
+Main machine Kconfig symbol:
+
+    CONFIG_MACH_NUC980
+
+
+Device trees
+============
+
+NUC980 device-tree sources are under:
+
+    arch/arm/boot/dts/nuvoton/
+
+The following NUC980 DTBs are built when CONFIG_ARCH_NUC980 is enabled:
+
+    nuc980-dev-v1.0.dtb
+    nuc980-iot-v1.0.dtb
+    nuc980-iot-g2-v1.0.dtb
+    nuc980-iot-g2d-v1.0.dtb
+    nuc980-lorag.dtb
+    nuc980-eth2uart.dtb
+    nuc980-chili.dtb
+    nuc980-usb8p-v1.0.dtb
+
+Common SoC definitions are in:
+
+    arch/arm/boot/dts/nuvoton/nuc980.dtsi
+
+
+Defconfigs
+==========
+
+Two NUC980 defconfigs are provided:
+
+    arch/arm/configs/nuc980_defconfig
+    arch/arm/configs/nuc980_fmisd_defconfig
+
+Use nuc980_defconfig for the general NUC980 configuration.
+Use nuc980_fmisd_defconfig when booting with FMI/SD-oriented storage support.
+
+Both defconfigs currently use an initramfs path of:
+
+    CONFIG_INITRAMFS_SOURCE="../rootfs"
+
+Make sure that path exists relative to the kernel source directory, or change
+CONFIG_INITRAMFS_SOURCE before building.
+
+
+Build
+=====
+
+Install an ARM EABI cross compiler, then build from the kernel root.
+Set CROSS_COMPILE to match your toolchain prefix.
+
+Example:
+
+    export ARCH=arm
+    export CROSS_COMPILE=arm-linux-gnueabi-
+
+    make nuc980_defconfig
+    make -j$(nproc) zImage dtbs modules
+
+For the FMI/SD defconfig:
+
+    export ARCH=arm
+    export CROSS_COMPILE=arm-linux-gnueabi-
+
+    make nuc980_fmisd_defconfig
+    make -j$(nproc) zImage dtbs modules
+
+Main build outputs:
+
+    arch/arm/boot/zImage
+    arch/arm/boot/dts/nuvoton/*.dtb
+    modules.builtin
+    modules.order
+
+To install modules into a root filesystem staging directory:
+
+    make INSTALL_MOD_PATH=/path/to/rootfs modules_install
+
+
+Boot notes
+==========
+
+The provided defconfigs use this default kernel command line:
+
+    root=/dev/ram0 console=ttyS0,115200n8 rdinit=/linuxrc mem=64M
+
+Adjust the command line for your bootloader, memory size, root filesystem, and
+selected board DTB.
+
+A typical boot package contains:
+
+    zImage
+    one NUC980 board DTB
+    initramfs or another root filesystem
+
+
+NUC980 code map
+===============
+
+Important NUC980-specific areas in this tree:
+
+    arch/arm/mach-nuc980/              SoC and machine support
+    arch/arm/boot/dts/nuvoton/         NUC980 device trees
+    drivers/clk/nuvoton/               NUC980 clock drivers
+    drivers/clocksource/timer-nuc980.c NUC980 timer
+    drivers/crypto/nuc980-crypto*.c    Crypto engine support
+    drivers/dma/nuc980_dma*.c          PDMA support
+    drivers/gpio/gpio-nuc980.c         GPIO support
+    drivers/i2c/busses/i2c-nuc980-*.c  I2C bus drivers
+    drivers/iio/adc/nuc980_nadc.c      ADC support
+    drivers/input/                     Keys and touchscreen support
+    drivers/media/platform/nuc980-ccap.c
+                                      Camera capture support
+    drivers/misc/nuc980-*.c            EBI, smart-card, timers, slave helpers
+    drivers/mmc/host/nuc980_*.c        FMI/SD support
+    drivers/net/can/nuc980_can/        CAN support
+    drivers/net/ethernet/nuvoton/      Ethernet MAC support
+    drivers/pinctrl/nuvoton/           NUC980 pinctrl support
+    drivers/pwm/pwm-nuc980-*.c         PWM support
+    drivers/rtc/rtc-nuc980.c           RTC support
+    drivers/spi/spi-nuc980-*.c         SPI/QSPI support
+    drivers/tty/serial/nuc980_*.c      UART support
+    drivers/usb/                       USB host/device support
+    drivers/watchdog/nuc980_*.c        WDT/WWDT support
+    sound/soc/nuc980/                  ASoC I2S/audio support
+    include/linux/platform_data/       NUC980 platform data headers
+
+
+Common configuration symbols
+============================
+
+Frequently used NUC980 symbols include:
+
+    CONFIG_ARCH_NUC980
+    CONFIG_CPU_NUC980
+    CONFIG_MACH_NUC980
+    CONFIG_PINCTRL_NUC980
+    CONFIG_GPIO_NUC980
+    CONFIG_SERIAL_NUC980
+    CONFIG_SERIAL_NUC980_CONSOLE
+    CONFIG_NUC980_DMA
+    CONFIG_SPI_NUC980_QSPI
+    CONFIG_SPI_NUC980_SPI
+    CONFIG_I2C_BUS_NUC980_P0
+    CONFIG_MMC_NUC980_SD
+    CONFIG_NUC980_ETH0
+    CONFIG_NUC980_ETH1
+    CONFIG_NUC980_CAN
+    CONFIG_PWM_NUC980_PWM0
+    CONFIG_PWM_NUC980_PWM1
+    CONFIG_RTC_DRV_NUC980
+    CONFIG_NUC980_WDT
+    CONFIG_NUC980_WWDT
+    CONFIG_USB_NUC980_EHCI
+    CONFIG_USB_NUC980_OHCI
+    CONFIG_USB_NUC980
+    CONFIG_VIDEO_NUC980_CAMERA
+    CONFIG_SND_SOC_NUC980
+
+
+Development notes
+=================
+
+This repository may contain local build outputs such as .config, vmlinux,
+System.map, object files, and generated command files. They are not required
+source files for the port.
+
+When changing NUC980 platform support:
+
+    1. Update the relevant driver, DTS, or defconfig.
+    2. Rebuild zImage and dtbs.
+    3. Boot-test on the target NUC980 board.
+    4. Check early console output on ttyS0 at 115200 8N1 unless your board
+       uses a different UART.
+
+For upstream Linux development rules and coding style, continue to follow the
+documentation under Documentation/process/.
