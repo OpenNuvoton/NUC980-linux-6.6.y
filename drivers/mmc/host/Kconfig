@@ -304,10 +304,6 @@ config MMC_SDHCI_DOVE
 
 	  If unsure, say N.
 
-config MMC_NUC980_FMI
-	tristate "Nuvoton NUC980 FMI-SD support"
-	depends on MACH_NUC980 && NUC980_FMI_SD0
-
 config MMC_SDHCI_TEGRA
 	tristate "SDHCI platform support for the Tegra SD/MMC Controller"
 	depends on ARCH_TEGRA || COMPILE_TEST
