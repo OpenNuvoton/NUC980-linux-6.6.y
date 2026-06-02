@@ -40,7 +40,6 @@ static int usb_hcd_nuc980_probe(const struct hc_driver *driver,
 	int retval;
 	struct usb_hcd *hcd;
 	u32 val32[2];
-	struct pinctrl *p = NULL;
 	int irq;
 
 	dev_info(&pdev->dev, "probing host controller\n");
@@ -48,12 +47,7 @@ static int usb_hcd_nuc980_probe(const struct hc_driver *driver,
 	/*------------------------------------------------------------*/
 	/*  USBH Lite initialization                                  */
 	/*------------------------------------------------------------*/
-	p = devm_pinctrl_get_select_default(&pdev->dev);
-	if(IS_ERR(p)) {
-		dev_err(&pdev->dev, "unable to reserve ohci pin\n");
-		retval = PTR_ERR(p);
-		return retval;
-	}
+	devm_pinctrl_get_select_default(&pdev->dev);
 
 	if ((__raw_readl(REG_MFP_GPE_H) & 0x000F0000) == 0x00010000)
 		of_mfp_setting = 1;
