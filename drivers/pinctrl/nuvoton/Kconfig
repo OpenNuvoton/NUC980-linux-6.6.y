@@ -32,20 +32,6 @@ config PINCTRL_NUC980
         help
           Say Y here to enable NUC980 pinctrl driver
 
-
-config PINCTRL_NUC980
-        bool "NUC980 pinctrl driver"
-        depends on ARCH_NUC980
-        select PINMUX
-        select PINCONF
-	select GENERIC_PINCONF
-	select GPIOLIB
-	select GPIO_GENERIC
-	select GPIOLIB_IRQCHIP
-        help
-          Say Y here to enable NUC980 pinctrl driver
-
-
 config PINCTRL_NPCM7XX
 	bool "Pinctrl and GPIO driver for Nuvoton NPCM7XX"
 	depends on (ARCH_NPCM7XX || COMPILE_TEST) && OF
