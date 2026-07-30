@@ -44,6 +44,7 @@
 
 extern void nuc980_timer_init(void);
 extern void __init nuc980_map_io(void);
+extern void __init nuc980_reserve_memory(void);
 extern int __init nuc980_of_init_irq(struct device_node *node, struct device_node *parent);
 extern void nuc980_restart(enum reboot_mode mode, const char *cmd);
 
@@ -86,6 +87,7 @@ DT_MACHINE_START(nuc980_dt, "Nuvoton NUC980 (Device Tree)")
 	.init_machine = nuc980_dt_device_init,
 	.dt_compat = nuc980_dt_board_compat,
 	.init_late = nuc980_init_late,
+	.reserve = nuc980_reserve_memory,
 	.restart = nuc980_restart,
 	.nr_irqs = AIC_NR_IRQS,
 MACHINE_END
