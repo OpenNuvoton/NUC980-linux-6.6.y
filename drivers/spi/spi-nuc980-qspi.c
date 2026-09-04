@@ -11,12 +11,14 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/platform_data/dma-nuc980.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi-mem.h>
+#include <linux/string.h>
 #include <linux/wait.h>
 
 #include <linux/interrupt.h>
@@ -462,10 +464,38 @@ static int nuvoton_spi_data_xfer(struct nuvoton_spi *hw, const void *txbuf,
 			int pdma_en = 0;
 			int ret;
 			int tx_dummy = 0;
+			void *rx_bounce = NULL;
+			void *dma_rxbuf = rxbuf;
 
 			if (txbuf == NULL) {
 				tx_dummy = 1;
 				txbuf = (void *)(kmalloc(len, GFP_KERNEL));
+			} else if (!virt_addr_valid(txbuf) || is_vmalloc_addr(txbuf)) {
+				/*
+				 * dma_map_single() rejects buffers that are not
+				 * directly DMA-able (e.g. vmalloc'ed memory) and
+				 * just WARNs + returns an error; without this check
+				 * the code below would keep going and program the
+				 * PDMA engine with a bogus address. Bounce such
+				 * buffers through a kmalloc'ed buffer instead.
+				 */
+				void *bounce = kmalloc(len, GFP_KERNEL);
+
+				if (!bounce)
+					return -ENOMEM;
+				memcpy(bounce, txbuf, len);
+				txbuf = bounce;
+				tx_dummy = 1; /* reuse existing free-on-exit path */
+			}
+
+			if (rxbuf && (!virt_addr_valid(rxbuf) || is_vmalloc_addr(rxbuf))) {
+				rx_bounce = kmalloc(len, GFP_KERNEL);
+				if (!rx_bounce) {
+					if (tx_dummy)
+						kfree((void *)txbuf);
+					return -ENOMEM;
+				}
+				dma_rxbuf = rx_bounce;
 			}
 
 			end = jiffies + msecs_to_jiffies(SPI_GENERAL_TIMEOUT_MS);
@@ -493,10 +523,16 @@ static int nuvoton_spi_data_xfer(struct nuvoton_spi *hw, const void *txbuf,
 				dmaengine_slave_config(pdma->chan_rx,&(pdma->slave_config));
 
 				pdma->sgrx.dma_address = dma_map_single(hw->dev,
-				                                        (void *)rxbuf,
+				                                        (void *)dma_rxbuf,
 				                                        len, DMA_FROM_DEVICE);
-				if (dma_mapping_error(hw->dev, pdma->sgrx.dma_address))
+				if (dma_mapping_error(hw->dev, pdma->sgrx.dma_address)) {
 					dev_err(hw->dev, "rx dma map error\n");
+					if (rx_bounce)
+						kfree(rx_bounce);
+					if (tx_dummy)
+						kfree((void *)txbuf);
+					return -EIO;
+				}
 
 				/* Adjust physical address that skip non-alignment part */
 				pdma->sgrx.dma_address += non_rx_align_len;
@@ -540,8 +576,17 @@ static int nuvoton_spi_data_xfer(struct nuvoton_spi *hw, const void *txbuf,
 				pdma->sgtx.dma_address = dma_map_single(hw->dev,
 				                                        (void *)txbuf,
 				                                        len, DMA_TO_DEVICE);
-				if (dma_mapping_error(hw->dev, pdma->sgtx.dma_address))
+				if (dma_mapping_error(hw->dev, pdma->sgtx.dma_address)) {
 					dev_err(hw->dev, "tx dma map error\n");
+					if (rxbuf)
+						dma_unmap_single(hw->dev, pdma->sgrx.dma_address,
+						                 len, DMA_FROM_DEVICE);
+					if (rx_bounce)
+						kfree(rx_bounce);
+					if (tx_dummy)
+						kfree((void *)txbuf);
+					return -EIO;
+				}
 
 				/* Adjust physical address that skip non-alignment part */
 				pdma->sgtx.dma_address += non_tx_align_len;
@@ -618,9 +663,14 @@ static int nuvoton_spi_data_xfer(struct nuvoton_spi *hw, const void *txbuf,
 			__raw_writel((__raw_readl(hw->regs + REG_CTL) | SPIEN), hw->regs + REG_CTL); //Enable SPIEN
 
 			/* unmap buffers if mapped above, restore map address that includes non-alignment part */
-			if (rxbuf)
+			if (rxbuf) {
 				dma_unmap_single(hw->dev, pdma->sgrx.dma_address - non_rx_align_len, len,
 				                 DMA_FROM_DEVICE);
+				if (rx_bounce) {
+					memcpy(rxbuf, rx_bounce, len);
+					kfree(rx_bounce);
+				}
+			}
 			if (txbuf) {
 				dma_unmap_single(hw->dev, pdma->sgtx.dma_address - non_tx_align_len, len,
 				                 DMA_TO_DEVICE);
@@ -669,8 +719,11 @@ static int nuvoton_spi_data_xfer(struct nuvoton_spi *hw, const void *txbuf,
 static bool nuvoton_spi_mem_supports_op(struct spi_mem *mem,
                                         const struct spi_mem_op *op)
 {
-	if (op->data.buswidth > 4 || op->addr.buswidth > 4 ||
-	    op->dummy.buswidth > 4 || op->cmd.buswidth > 4)
+	struct nuvoton_spi *hw = spi_controller_get_devdata(mem->spi->controller);
+	unsigned int max_buswidth = hw->pdata->quad ? 4 : 1;
+
+	if (op->data.buswidth > max_buswidth || op->addr.buswidth > max_buswidth ||
+	    op->dummy.buswidth > max_buswidth || op->cmd.buswidth > max_buswidth)
 		return false;
 
 	if (op->data.nbytes && op->dummy.nbytes &&
